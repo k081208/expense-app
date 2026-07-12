@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>経費管理</title>
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="経費管理">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" href="./icons/favicon-32.png">
+<link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+
+<!-- 初回セットアップ: Google OAuth クライアントID入力 -->
+<section id="setup-screen" class="screen hidden">
+  <div class="centered-card">
+    <h1>初期設定</h1>
+    <p class="muted">Google Cloud Console で作成した OAuth クライアントID を入力してください。詳しい手順は README.md を参照してください。</p>
+    <label for="client-id-input">OAuth クライアントID</label>
+    <input id="client-id-input" type="text" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button id="save-client-id" class="btn-primary">保存して次へ</button>
+    <p id="setup-error" class="error-text"></p>
+  </div>
+</section>
+
+<!-- ログイン画面 -->
+<section id="login-screen" class="screen hidden">
+  <div class="centered-card">
+    <img src="./icons/icon-192.png" alt="" class="app-logo">
+    <h1>経費管理</h1>
+    <p class="muted">レシート撮影とカテゴリ入力だけで経費を記録できます。データはあなたの Google アカウント内（スプレッドシート・Drive）にのみ保存されます。</p>
+    <button id="signin-btn" class="btn-primary">Google でログイン</button>
+    <p id="login-error" class="error-text"></p>
+    <button id="open-setup-btn" class="btn-link">クライアントIDを変更する</button>
+  </div>
+</section>
+
+<!-- 読み込み中 -->
+<section id="loading-screen" class="screen">
+  <div class="centered-card">
+    <div class="spinner"></div>
+    <p class="muted">読み込み中...</p>
+  </div>
+</section>
+
+<!-- メインアプリ -->
+<section id="app" class="screen hidden">
+  <header class="app-header">
+    <span class="app-title">経費管理</span>
+    <span id="sync-badge" class="sync-badge hidden"></span>
+  </header>
+
+  <main class="app-main">
+
+    <!-- 入力 -->
+    <div id="view-input" class="view">
+      <form id="expense-form">
+        <label for="f-date">日付</label>
+        <input id="f-date" type="date" required>
+
+        <label for="f-category">カテゴリ</label>
+        <div class="row">
+          <select id="f-category" required></select>
+        </div>
+
+        <label for="f-amount">金額（円）</label>
+        <input id="f-amount" type="number" inputmode="numeric" min="0" step="1" placeholder="0" required>
+
+        <label for="f-memo">メモ（任意）</label>
+        <input id="f-memo" type="text" placeholder="例）〇〇文具店">
+
+        <label for="f-receipt">レシート写真（任意）</label>
+        <div class="receipt-picker">
+          <input id="f-receipt" type="file" accept="image/*" capture="environment">
+          <img id="receipt-preview" class="hidden">
+          <button type="button" id="receipt-clear" class="btn-link hidden">写真を削除</button>
+        </div>
+
+        <button type="submit" class="btn-primary">記録する</button>
+        <p id="form-message" class="form-message"></p>
+      </form>
+
+      <h2 class="section-title">最近の入力</h2>
+      <ul id="recent-list" class="expense-list"></ul>
+    </div>
+
+    <!-- 一覧 -->
+    <div id="view-list" class="view hidden">
+      <div class="month-switcher">
+        <button id="list-prev-month" class="icon-btn" aria-label="前月">‹</button>
+        <span id="list-month-label"></span>
+        <button id="list-next-month" class="icon-btn" aria-label="翌月">›</button>
+      </div>
+      <div class="month-total">合計 <strong id="list-month-total">¥0</strong></div>
+      <button id="export-csv-btn" class="btn-secondary">CSVでエクスポート</button>
+      <ul id="month-list" class="expense-list"></ul>
+    </div>
+
+    <!-- レポート -->
+    <div id="view-report" class="view hidden">
+      <div class="month-switcher">
+        <button id="report-prev-month" class="icon-btn" aria-label="前月">‹</button>
+        <span id="report-month-label"></span>
+        <button id="report-next-month" class="icon-btn" aria-label="翌月">›</button>
+      </div>
+      <div class="month-total">合計 <strong id="report-month-total">¥0</strong></div>
+      <h2 class="section-title">カテゴリ別内訳</h2>
+      <canvas id="category-chart" class="chart-canvas"></canvas>
+      <h2 class="section-title">直近6か月の推移</h2>
+      <canvas id="trend-chart" class="chart-canvas"></canvas>
+    </div>
+
+    <!-- 設定 -->
+    <div id="view-settings" class="view hidden">
+      <h2 class="section-title">同期</h2>
+      <p id="settings-sync-status" class="muted"></p>
+      <button id="sync-now-btn" class="btn-secondary">今すぐ同期</button>
+
+      <h2 class="section-title">カテゴリ管理</h2>
+      <ul id="category-list" class="category-list"></ul>
+      <div class="row">
+        <input id="new-category-input" type="text" placeholder="新しいカテゴリ名">
+        <button id="add-category-btn" class="btn-secondary">追加</button>
+      </div>
+
+      <h2 class="section-title">データ</h2>
+      <button id="open-sheet-btn" class="btn-secondary">Googleスプレッドシートを開く</button>
+      <button id="clear-cache-btn" class="btn-secondary">ローカルキャッシュをクリア</button>
+
+      <h2 class="section-title">アカウント</h2>
+      <button id="signout-btn" class="btn-secondary">ログアウト</button>
+    </div>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-view="view-input">
+      <span>入力</span>
+    </button>
+    <button class="nav-btn" data-view="view-list">
+      <span>一覧</span>
+    </button>
+    <button class="nav-btn" data-view="view-report">
+      <span>レポート</span>
+    </button>
+    <button class="nav-btn" data-view="view-settings">
+      <span>設定</span>
+    </button>
+  </nav>
+</section>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>
