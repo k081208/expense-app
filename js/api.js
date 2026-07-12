@@ -20,6 +20,7 @@ const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3/files';
 const EXPENSES_SHEET = 'Expenses';
 const CATEGORIES_SHEET = 'Categories';
 const SUMMARY_SHEET = '月次集計';
+const DAILY_SUMMARY_SHEET = '日次集計';
 const EXPENSES_HEADER = ['ID', 'Date', 'Category', 'Amount', 'Memo', 'ReceiptFileId', 'ReceiptURL', 'CreatedAt'];
 
 async function authedFetch(url, options = {}) {
@@ -214,15 +215,15 @@ export async function saveCategories(spreadsheetId, categories) {
 
 // ---------- 月次集計(PCでの確認用にGoogleスプレッドシート内へ書き出す) ----------
 
-async function ensureSummarySheet(spreadsheetId) {
+async function ensureSheetExists(spreadsheetId, sheetName) {
   const meta = await authedFetch(`${SHEETS_BASE}/${spreadsheetId}?fields=sheets.properties`);
-  const exists = meta.sheets.some((s) => s.properties.title === SUMMARY_SHEET);
+  const exists = meta.sheets.some((s) => s.properties.title === sheetName);
   if (exists) return;
   await authedFetch(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      requests: [{ addSheet: { properties: { title: SUMMARY_SHEET } } }],
+      requests: [{ addSheet: { properties: { title: sheetName } } }],
     }),
   });
 }
@@ -232,34 +233,34 @@ function columnLetter(index) {
   return String.fromCharCode('A'.charCodeAt(0) + index);
 }
 
-// 月×カテゴリの合計金額表を計算し、「月次集計」シートに書き出す。
-// PCでいつでも確認できるよう、スプレッドシート上に実際の値として保存する
-// (アプリ側でデータを同期するたびに更新される)
-export async function updateMonthlySummary(spreadsheetId, expenses, categories) {
-  await ensureSummarySheet(spreadsheetId);
+// (グループキー)×カテゴリの合計金額表を計算し、指定したシートに書き出す共通処理。
+// 月次集計・日次集計の両方で使う。PCでいつでも確認できるよう、スプレッドシート上に
+// 実際の値として保存する(アプリ側でデータを同期するたびに更新される)
+async function writeGroupedSummary(spreadsheetId, sheetName, groupLabel, expenses, categories, groupKeyOf) {
+  await ensureSheetExists(spreadsheetId, sheetName);
 
   const totals = {};
-  const months = new Set();
+  const groupKeys = new Set();
   expenses.forEach((e) => {
-    const month = (e.date || '').slice(0, 7);
-    if (!month) return;
-    months.add(month);
-    if (!totals[month]) totals[month] = {};
-    totals[month][e.category] = (totals[month][e.category] || 0) + e.amount;
+    const key = groupKeyOf(e.date);
+    if (!key) return;
+    groupKeys.add(key);
+    if (!totals[key]) totals[key] = {};
+    totals[key][e.category] = (totals[key][e.category] || 0) + e.amount;
   });
-  const sortedMonths = Array.from(months).sort().reverse();
+  const sortedKeys = Array.from(groupKeys).sort().reverse();
 
-  const header = ['月', ...categories, '合計'];
-  const bodyRows = sortedMonths.map((month) => {
-    const rowTotals = totals[month] || {};
+  const header = [groupLabel, ...categories, '合計'];
+  const bodyRows = sortedKeys.map((key) => {
+    const rowTotals = totals[key] || {};
     const values = categories.map((c) => rowTotals[c] || 0);
     const rowTotal = values.reduce((s, v) => s + v, 0);
-    return [month, ...values, rowTotal];
+    return [key, ...values, rowTotal];
   });
 
   const grandTotals = categories.map((c) => {
     let sum = 0;
-    sortedMonths.forEach((m) => { sum += (totals[m] && totals[m][c]) || 0; });
+    sortedKeys.forEach((k) => { sum += (totals[k] && totals[k][c]) || 0; });
     return sum;
   });
   const grandTotalRow = ['合計', ...grandTotals, grandTotals.reduce((s, v) => s + v, 0)];
@@ -269,8 +270,8 @@ export async function updateMonthlySummary(spreadsheetId, expenses, categories) 
   const lastRow = allRows.length;
 
   // 日本語のシート名を含むため、URLパスに使う範囲指定はエンコードする
-  const clearRange = encodeURIComponent(`'${SUMMARY_SHEET}'!A1:Z1000`);
-  const writeRange = encodeURIComponent(`'${SUMMARY_SHEET}'!A1:${lastCol}${lastRow}`);
+  const clearRange = encodeURIComponent(`'${sheetName}'!A1:Z5000`);
+  const writeRange = encodeURIComponent(`'${sheetName}'!A1:${lastCol}${lastRow}`);
 
   // カテゴリの増減で列数が変わるため、書き込み前に広めの範囲をクリアしておく
   await authedFetch(`${SHEETS_BASE}/${spreadsheetId}/values/${clearRange}:clear`, {
@@ -281,6 +282,11 @@ export async function updateMonthlySummary(spreadsheetId, expenses, categories) 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ values: allRows }),
   });
+}
+
+export async function updateSummarySheets(spreadsheetId, expenses, categories) {
+  await writeGroupedSummary(spreadsheetId, SUMMARY_SHEET, '月', expenses, categories, (date) => (date || '').slice(0, 7) || null);
+  await writeGroupedSummary(spreadsheetId, DAILY_SUMMARY_SHEET, '日付', expenses, categories, (date) => date || null);
 }
 
 // ---------- レシート画像アップロード ----------
