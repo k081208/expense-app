@@ -291,11 +291,34 @@ export async function updateSummarySheets(spreadsheetId, expenses, categories) {
 
 // ---------- レシート画像アップロード ----------
 
+// Googleドライブの容量を圧迫しすぎないよう、文字が読める程度の画質を保ちつつ
+// アップロード前に縮小・再圧縮する。失敗した場合は元のファイルをそのまま使う
+async function compressImageForUpload(file, maxDim = 1800, quality = 0.8) {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('画像の圧縮に失敗しました'))), 'image/jpeg', quality);
+    });
+    const baseName = (file.name || 'receipt').replace(/\.\w+$/, '');
+    return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+  } catch (err) {
+    return file;
+  }
+}
+
 export async function uploadReceipt(folderId, file) {
-  const metadata = { name: `${Date.now()}_${file.name}`, parents: [folderId] };
+  const compressed = await compressImageForUpload(file);
+  const metadata = { name: `${Date.now()}_${compressed.name}`, parents: [folderId] };
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-  form.append('file', file);
+  form.append('file', compressed);
 
   const token = getAccessToken();
   if (!token) throw new AuthError('未ログインです');
