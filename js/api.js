@@ -19,6 +19,7 @@ const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3/files';
 
 const EXPENSES_SHEET = 'Expenses';
 const CATEGORIES_SHEET = 'Categories';
+const SUMMARY_SHEET = '月次集計';
 const EXPENSES_HEADER = ['ID', 'Date', 'Category', 'Amount', 'Memo', 'ReceiptFileId', 'ReceiptURL', 'CreatedAt'];
 
 async function authedFetch(url, options = {}) {
@@ -208,6 +209,77 @@ export async function saveCategories(spreadsheetId, categories) {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ values: categories.map((c) => [c]) }),
+  });
+}
+
+// ---------- 月次集計(PCでの確認用にGoogleスプレッドシート内へ書き出す) ----------
+
+async function ensureSummarySheet(spreadsheetId) {
+  const meta = await authedFetch(`${SHEETS_BASE}/${spreadsheetId}?fields=sheets.properties`);
+  const exists = meta.sheets.some((s) => s.properties.title === SUMMARY_SHEET);
+  if (exists) return;
+  await authedFetch(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title: SUMMARY_SHEET } } }],
+    }),
+  });
+}
+
+function columnLetter(index) {
+  // index: 0始まり。カテゴリ数が26列を超えることは想定しないため単純なA〜Zのみ対応
+  return String.fromCharCode('A'.charCodeAt(0) + index);
+}
+
+// 月×カテゴリの合計金額表を計算し、「月次集計」シートに書き出す。
+// PCでいつでも確認できるよう、スプレッドシート上に実際の値として保存する
+// (アプリ側でデータを同期するたびに更新される)
+export async function updateMonthlySummary(spreadsheetId, expenses, categories) {
+  await ensureSummarySheet(spreadsheetId);
+
+  const totals = {};
+  const months = new Set();
+  expenses.forEach((e) => {
+    const month = (e.date || '').slice(0, 7);
+    if (!month) return;
+    months.add(month);
+    if (!totals[month]) totals[month] = {};
+    totals[month][e.category] = (totals[month][e.category] || 0) + e.amount;
+  });
+  const sortedMonths = Array.from(months).sort().reverse();
+
+  const header = ['月', ...categories, '合計'];
+  const bodyRows = sortedMonths.map((month) => {
+    const rowTotals = totals[month] || {};
+    const values = categories.map((c) => rowTotals[c] || 0);
+    const rowTotal = values.reduce((s, v) => s + v, 0);
+    return [month, ...values, rowTotal];
+  });
+
+  const grandTotals = categories.map((c) => {
+    let sum = 0;
+    sortedMonths.forEach((m) => { sum += (totals[m] && totals[m][c]) || 0; });
+    return sum;
+  });
+  const grandTotalRow = ['合計', ...grandTotals, grandTotals.reduce((s, v) => s + v, 0)];
+
+  const allRows = [header, ...bodyRows, grandTotalRow];
+  const lastCol = columnLetter(header.length - 1);
+  const lastRow = allRows.length;
+
+  // 日本語のシート名を含むため、URLパスに使う範囲指定はエンコードする
+  const clearRange = encodeURIComponent(`'${SUMMARY_SHEET}'!A1:Z1000`);
+  const writeRange = encodeURIComponent(`'${SUMMARY_SHEET}'!A1:${lastCol}${lastRow}`);
+
+  // カテゴリの増減で列数が変わるため、書き込み前に広めの範囲をクリアしておく
+  await authedFetch(`${SHEETS_BASE}/${spreadsheetId}/values/${clearRange}:clear`, {
+    method: 'POST',
+  });
+  await authedFetch(`${SHEETS_BASE}/${spreadsheetId}/values/${writeRange}?valueInputOption=RAW`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: allRows }),
   });
 }
 

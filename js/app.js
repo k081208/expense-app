@@ -126,6 +126,7 @@ async function refreshFromServer() {
   categories = serverCategories;
   store.setCachedExpenses(expenses);
   store.setCachedCategories(categories);
+  await api.updateMonthlySummary(spreadsheetId, expenses, categories).catch(() => {});
 }
 
 function markExpenseSynced(id, receiptFileId, receiptUrl) {
@@ -498,6 +499,7 @@ expenseForm.addEventListener('submit', async (e) => {
       cacheEntry.receiptUrl = expenseToSave.receiptUrl;
       store.setCachedExpenses(expenses);
       succeeded = true;
+      api.updateMonthlySummary(spreadsheetId, expenses, categories).catch(() => {});
     } catch (err) {
       succeeded = false;
     }
@@ -541,6 +543,7 @@ async function handleDelete(expense) {
     expenses = expenses.filter((e) => e.id !== expense.id);
     store.setCachedExpenses(expenses);
     renderAll();
+    api.updateMonthlySummary(spreadsheetId, expenses, categories).catch(() => {});
   } catch (err) {
     alert(`削除に失敗しました: ${err.message}`);
   }
@@ -587,6 +590,7 @@ async function renameCategory(cat) {
     store.setCachedCategories(categories);
     renderCategoryList();
     renderCategorySelect();
+    api.updateMonthlySummary(spreadsheetId, expenses, categories).catch(() => {});
   } catch (err) {
     alert(`保存に失敗しました: ${err.message}`);
   }
@@ -604,6 +608,7 @@ async function removeCategory(cat) {
     store.setCachedCategories(categories);
     renderCategoryList();
     renderCategorySelect();
+    api.updateMonthlySummary(spreadsheetId, expenses, categories).catch(() => {});
   } catch (err) {
     alert(`保存に失敗しました: ${err.message}`);
   }
@@ -624,6 +629,7 @@ $('add-category-btn').addEventListener('click', async () => {
     newCategoryInput.value = '';
     renderCategoryList();
     renderCategorySelect();
+    api.updateMonthlySummary(spreadsheetId, expenses, categories).catch(() => {});
   } catch (err) {
     alert(`保存に失敗しました: ${err.message}`);
   }
