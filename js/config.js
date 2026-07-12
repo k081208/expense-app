@@ -2,7 +2,7 @@
 
 // 更新のたびに1つずつ増やす。設定画面に表示され、Service Workerのキャッシュ
 // バージョンにも使われるため、更新が実機に反映されたか確認できる
-export const APP_VERSION = '13';
+export const APP_VERSION = '14';
 
 export const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/cloud-vision';
 
@@ -16,6 +16,7 @@ const STORAGE_KEYS = {
   clientId: 'keihi.clientId',
   spreadsheetId: 'keihi.spreadsheetId',
   folderId: 'keihi.folderId',
+  salesSpreadsheetId: 'keihi.salesSpreadsheetId',
 };
 
 export function getClientId() {
@@ -40,4 +41,12 @@ export function getFolderId() {
 
 export function setFolderId(value) {
   localStorage.setItem(STORAGE_KEYS.folderId, value);
+}
+
+export function getSalesSpreadsheetId() {
+  return localStorage.getItem(STORAGE_KEYS.salesSpreadsheetId) || '';
+}
+
+export function setSalesSpreadsheetId(value) {
+  localStorage.setItem(STORAGE_KEYS.salesSpreadsheetId, value);
 }

@@ -60,6 +60,8 @@ const categoryListEl = $('category-list');
 const newCategoryInput = $('new-category-input');
 const storeListEl = $('store-list');
 const newStoreInput = $('new-store-input');
+const salesSheetUrlInput = $('sales-sheet-url');
+const salesSheetStatus = $('sales-sheet-status');
 const appVersionEl = $('app-version');
 
 // ---------- utilities ----------
@@ -111,6 +113,15 @@ async function ensureSignedIn() {
   }
 }
 
+// ---------- 集計シートの更新(月次/日次 + 売上シートとの収支) ----------
+async function syncSummaries(spreadsheetId) {
+  await api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
+  const salesId = config.getSalesSpreadsheetId();
+  if (salesId) {
+    await api.updateProfitLossSheet(spreadsheetId, salesId, expenses).catch(() => {});
+  }
+}
+
 // ---------- サーバー同期 ----------
 async function refreshFromServer() {
   const spreadsheetId = await api.ensureSpreadsheet();
@@ -126,7 +137,7 @@ async function refreshFromServer() {
   categories = serverCategories;
   store.setCachedExpenses(expenses);
   store.setCachedCategories(categories);
-  await api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
+  await syncSummaries(spreadsheetId);
 }
 
 function markExpenseSynced(id, receiptFileId, receiptUrl) {
@@ -373,6 +384,8 @@ function renderSettings() {
   settingsSyncStatus.textContent = queue.length ? `未同期のデータが ${queue.length} 件あります` : 'すべて同期済みです';
   renderCategoryList();
   renderStoreList();
+  const salesId = config.getSalesSpreadsheetId();
+  salesSheetStatus.textContent = salesId ? `連携中のシートID: ${salesId}` : '未連携です';
 }
 
 function updateSyncBadge() {
@@ -515,7 +528,7 @@ expenseForm.addEventListener('submit', async (e) => {
       cacheEntry.receiptUrl = expenseToSave.receiptUrl;
       store.setCachedExpenses(expenses);
       succeeded = true;
-      api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
+      syncSummaries(spreadsheetId);
     } catch (err) {
       succeeded = false;
     }
@@ -559,7 +572,7 @@ async function handleDelete(expense) {
     expenses = expenses.filter((e) => e.id !== expense.id);
     store.setCachedExpenses(expenses);
     renderAll();
-    api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
+    syncSummaries(spreadsheetId);
   } catch (err) {
     alert(`削除に失敗しました: ${err.message}`);
   }
@@ -608,7 +621,7 @@ async function moveCategory(index, delta) {
     store.setCachedCategories(categories);
     renderCategoryList();
     renderCategorySelect();
-    api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
+    syncSummaries(spreadsheetId);
   } catch (err) {
     alert(`保存に失敗しました: ${err.message}`);
   }
@@ -629,7 +642,7 @@ async function renameCategory(cat) {
     store.setCachedCategories(categories);
     renderCategoryList();
     renderCategorySelect();
-    api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
+    syncSummaries(spreadsheetId);
   } catch (err) {
     alert(`保存に失敗しました: ${err.message}`);
   }
@@ -647,7 +660,7 @@ async function removeCategory(cat) {
     store.setCachedCategories(categories);
     renderCategoryList();
     renderCategorySelect();
-    api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
+    syncSummaries(spreadsheetId);
   } catch (err) {
     alert(`保存に失敗しました: ${err.message}`);
   }
@@ -668,7 +681,7 @@ $('add-category-btn').addEventListener('click', async () => {
     newCategoryInput.value = '';
     renderCategoryList();
     renderCategorySelect();
-    api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
+    syncSummaries(spreadsheetId);
   } catch (err) {
     alert(`保存に失敗しました: ${err.message}`);
   }
@@ -701,6 +714,25 @@ $('sync-now-btn').addEventListener('click', async () => {
     alert(`同期に失敗しました: ${err.message}`);
   }
   renderSettings();
+});
+
+$('save-sales-sheet-btn').addEventListener('click', async () => {
+  const raw = salesSheetUrlInput.value.trim();
+  if (!raw) return;
+  const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  const salesId = match ? match[1] : raw;
+
+  salesSheetStatus.textContent = '確認中...';
+  try {
+    await ensureSignedIn();
+    const spreadsheetId = await api.ensureSpreadsheet();
+    await api.updateProfitLossSheet(spreadsheetId, salesId, expenses);
+    config.setSalesSpreadsheetId(salesId);
+    salesSheetUrlInput.value = '';
+    salesSheetStatus.textContent = `連携しました(シートID: ${salesId})`;
+  } catch (err) {
+    salesSheetStatus.textContent = `連携に失敗しました: ${err.message}`;
+  }
 });
 
 $('open-sheet-btn').addEventListener('click', () => {

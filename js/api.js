@@ -289,6 +289,72 @@ export async function updateSummarySheets(spreadsheetId, expenses, categories) {
   await writeGroupedSummary(spreadsheetId, DAILY_SUMMARY_SHEET, '日付', expenses, categories, (date) => date || null);
 }
 
+// ---------- 売上シートとの収支計算 ----------
+
+const PROFIT_LOSS_SHEET = '収支';
+const SALES_DASHBOARD_SHEET = 'ダッシュボード';
+const SALES_SUMMARY_START_ROW = 33; // 売上シート内「月別集計」表のデータ開始行(A:年月 B:総売上 C:総バック額 D:店の純利益)
+
+function parseMoneyCell(v) {
+  return Number(String(v == null ? '' : v).replace(/,/g, '')) || 0;
+}
+
+async function readSalesMonthlySummary(salesSpreadsheetId) {
+  const range = encodeURIComponent(`'${SALES_DASHBOARD_SHEET}'!A${SALES_SUMMARY_START_ROW}:D2000`);
+  const data = await authedFetch(`${SHEETS_BASE}/${salesSpreadsheetId}/values/${range}`);
+  const rows = data.values || [];
+  const byMonth = {};
+  rows.forEach((r) => {
+    const month = String(r[0] || '').trim();
+    if (!/^\d{4}-\d{2}/.test(month)) return;
+    byMonth[month.slice(0, 7)] = {
+      totalSales: parseMoneyCell(r[1]),
+      totalBack: parseMoneyCell(r[2]),
+      netProfit: parseMoneyCell(r[3]),
+    };
+  });
+  return byMonth;
+}
+
+// 経費アプリ側の月別経費合計と、売上シートの「店の純利益」を突き合わせて
+// 「収支」シートに書き出す。売上シートが未設定/読み取れない場合は例外を投げる
+export async function updateProfitLossSheet(expenseSpreadsheetId, salesSpreadsheetId, expenses) {
+  const salesByMonth = await readSalesMonthlySummary(salesSpreadsheetId);
+
+  const expenseTotals = {};
+  expenses.forEach((e) => {
+    const month = (e.date || '').slice(0, 7);
+    if (!month) return;
+    expenseTotals[month] = (expenseTotals[month] || 0) + e.amount;
+  });
+
+  const months = new Set([...Object.keys(expenseTotals), ...Object.keys(salesByMonth)]);
+  const sortedMonths = Array.from(months).sort().reverse();
+
+  await ensureSheetExists(expenseSpreadsheetId, PROFIT_LOSS_SHEET);
+
+  const header = ['年月', '店の純利益', '経費合計', '収支'];
+  const bodyRows = sortedMonths.map((month) => {
+    const netProfit = (salesByMonth[month] && salesByMonth[month].netProfit) || 0;
+    const expenseTotal = expenseTotals[month] || 0;
+    return [month, netProfit, expenseTotal, netProfit - expenseTotal];
+  });
+
+  const allRows = [header, ...bodyRows];
+  const lastRow = allRows.length;
+  const clearRange = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!A1:Z2000`);
+  const writeRange = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!A1:D${lastRow}`);
+
+  await authedFetch(`${SHEETS_BASE}/${expenseSpreadsheetId}/values/${clearRange}:clear`, {
+    method: 'POST',
+  });
+  await authedFetch(`${SHEETS_BASE}/${expenseSpreadsheetId}/values/${writeRange}?valueInputOption=RAW`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: allRows }),
+  });
+}
+
 // ---------- レシート画像アップロード ----------
 
 // Googleドライブの容量を圧迫しすぎないよう、文字が読める程度の画質を保ちつつ
