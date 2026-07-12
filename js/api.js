@@ -3,12 +3,15 @@ import { getAccessToken } from './auth.js';
 import {
   SPREADSHEET_NAME,
   RECEIPT_FOLDER_NAME,
+  PROFIT_SPREADSHEET_NAME,
   APP_TAG,
   DEFAULT_CATEGORIES,
   getSpreadsheetId,
   setSpreadsheetId,
   getFolderId,
   setFolderId,
+  getProfitSpreadsheetId,
+  setProfitSpreadsheetId,
 } from './config.js';
 
 export class AuthError extends Error {}
@@ -21,6 +24,7 @@ const EXPENSES_SHEET = 'Expenses';
 const CATEGORIES_SHEET = 'Categories';
 const SUMMARY_SHEET = '月次集計';
 const DAILY_SUMMARY_SHEET = '日次集計';
+const PROFIT_LOSS_SHEET = '収支';
 const EXPENSES_HEADER = ['ID', 'Date', 'Category', 'Amount', 'Memo', 'ReceiptFileId', 'ReceiptURL', 'CreatedAt'];
 
 async function authedFetch(url, options = {}) {
@@ -91,6 +95,37 @@ export async function ensureSpreadsheet() {
     });
   }
   setSpreadsheetId(id);
+  return id;
+}
+
+// 経費・売上とは別に、家賃や給与などを手入力しつつ最終利益まで見るための
+// 専用スプレッドシート
+export async function ensureProfitSpreadsheet() {
+  let id = getProfitSpreadsheetId();
+  if (id) {
+    try {
+      await authedFetch(`${SHEETS_BASE}/${id}?fields=spreadsheetId`);
+      return id;
+    } catch (err) {
+      if (!(err instanceof AuthError)) setProfitSpreadsheetId('');
+      else throw err;
+    }
+  }
+
+  id = await findAppFile(PROFIT_SPREADSHEET_NAME, 'application/vnd.google-apps.spreadsheet');
+  if (!id) {
+    const created = await authedFetch(SHEETS_BASE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        properties: { title: PROFIT_SPREADSHEET_NAME },
+        sheets: [{ properties: { title: PROFIT_LOSS_SHEET } }],
+      }),
+    });
+    id = created.spreadsheetId;
+    await tagFile(id);
+  }
+  setProfitSpreadsheetId(id);
   return id;
 }
 
@@ -289,11 +324,14 @@ export async function updateSummarySheets(spreadsheetId, expenses, categories) {
   await writeGroupedSummary(spreadsheetId, DAILY_SUMMARY_SHEET, '日付', expenses, categories, (date) => date || null);
 }
 
-// ---------- 売上シートとの収支計算 ----------
+// ---------- 売上シートとの収支計算(専用スプレッドシート) ----------
 
-const PROFIT_LOSS_SHEET = '収支';
 const SALES_DASHBOARD_SHEET = 'ダッシュボード';
 const SALES_SUMMARY_START_ROW = 33; // 売上シート内「月別集計」表のデータ開始行(A:年月 B:総売上 C:総バック額 D:店の純利益)
+
+// A〜E: 自動計算値(年月/総売上/バック額/店の純利益/経費) J: 最終利益(数式)
+// F〜I(家賃/給与/光熱費/広告宣伝費)は手入力欄なので、このアプリからは一切書き換えない
+const PROFIT_HEADER = ['年月', '総売上', 'キャストバック額', '店の純利益', '経費(アプリ)', '家賃', '給与', '光熱費', '広告宣伝費', '最終利益'];
 
 function parseMoneyCell(v) {
   return Number(String(v == null ? '' : v).replace(/,/g, '')) || 0;
@@ -316,9 +354,12 @@ async function readSalesMonthlySummary(salesSpreadsheetId) {
   return byMonth;
 }
 
-// 経費アプリ側の月別経費合計と、売上シートの「店の純利益」を突き合わせて
-// 「収支」シートに書き出す。売上シートが未設定/読み取れない場合は例外を投げる
-export async function updateProfitLossSheet(expenseSpreadsheetId, salesSpreadsheetId, expenses) {
+// 経費アプリ側の月別経費合計と、売上シートの月別集計を「収支」シートに書き出す。
+// 家賃・給与・光熱費・広告宣伝費は手入力してもらう前提のため、F〜I列は
+// 一度もクリア/上書きしない(A〜EとJのみ更新する)
+export async function updateProfitLossSheet(profitSpreadsheetId, salesSpreadsheetId, expenses) {
+  await ensureSheetExists(profitSpreadsheetId, PROFIT_LOSS_SHEET);
+
   const salesByMonth = await readSalesMonthlySummary(salesSpreadsheetId);
 
   const expenseTotals = {};
@@ -330,28 +371,60 @@ export async function updateProfitLossSheet(expenseSpreadsheetId, salesSpreadshe
 
   const months = new Set([...Object.keys(expenseTotals), ...Object.keys(salesByMonth)]);
   const sortedMonths = Array.from(months).sort().reverse();
+  const lastRow = sortedMonths.length + 1;
 
-  await ensureSheetExists(expenseSpreadsheetId, PROFIT_LOSS_SHEET);
-
-  const header = ['年月', '店の純利益', '経費合計', '収支'];
-  const bodyRows = sortedMonths.map((month) => {
-    const netProfit = (salesByMonth[month] && salesByMonth[month].netProfit) || 0;
-    const expenseTotal = expenseTotals[month] || 0;
-    return [month, netProfit, expenseTotal, netProfit - expenseTotal];
-  });
-
-  const allRows = [header, ...bodyRows];
-  const lastRow = allRows.length;
-  const clearRange = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!A1:Z2000`);
-  const writeRange = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!A1:D${lastRow}`);
-
-  await authedFetch(`${SHEETS_BASE}/${expenseSpreadsheetId}/values/${clearRange}:clear`, {
-    method: 'POST',
-  });
-  await authedFetch(`${SHEETS_BASE}/${expenseSpreadsheetId}/values/${writeRange}?valueInputOption=RAW`, {
+  const headerRange = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!A1:J1`);
+  await authedFetch(`${SHEETS_BASE}/${profitSpreadsheetId}/values/${headerRange}?valueInputOption=RAW`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ values: allRows }),
+    body: JSON.stringify({ values: [PROFIT_HEADER] }),
+  });
+
+  const dataRows = sortedMonths.map((month) => {
+    const sales = salesByMonth[month] || { totalSales: 0, totalBack: 0, netProfit: 0 };
+    const expenseTotal = expenseTotals[month] || 0;
+    return [month, sales.totalSales, sales.totalBack, sales.netProfit, expenseTotal];
+  });
+  const clearRangeAE = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!A2:E2000`);
+  await authedFetch(`${SHEETS_BASE}/${profitSpreadsheetId}/values/${clearRangeAE}:clear`, { method: 'POST' });
+  if (dataRows.length) {
+    const writeRangeAE = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!A2:E${lastRow}`);
+    await authedFetch(`${SHEETS_BASE}/${profitSpreadsheetId}/values/${writeRangeAE}?valueInputOption=RAW`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: dataRows }),
+    });
+  }
+
+  // J列(最終利益) = D(店の純利益) - E(経費) - F(家賃) - G(給与) - H(光熱費) - I(広告宣伝費)
+  const formulaRows = sortedMonths.map((_, i) => {
+    const row = i + 2;
+    return [`=D${row}-E${row}-F${row}-G${row}-H${row}-I${row}`];
+  });
+  const clearRangeJ = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!J2:J2000`);
+  await authedFetch(`${SHEETS_BASE}/${profitSpreadsheetId}/values/${clearRangeJ}:clear`, { method: 'POST' });
+  if (formulaRows.length) {
+    const writeRangeJ = encodeURIComponent(`'${PROFIT_LOSS_SHEET}'!J2:J${lastRow}`);
+    await authedFetch(`${SHEETS_BASE}/${profitSpreadsheetId}/values/${writeRangeJ}?valueInputOption=USER_ENTERED`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: formulaRows }),
+    });
+  }
+}
+
+// 経費スプレッドシート内に以前作った簡易版「収支」タブは今後使わないため、
+// 存在すれば削除しておく(専用スプレッドシートに移行したため)
+export async function removeSheetIfExists(spreadsheetId, sheetName) {
+  const meta = await authedFetch(`${SHEETS_BASE}/${spreadsheetId}?fields=sheets.properties`);
+  const sheet = meta.sheets.find((s) => s.properties.title === sheetName);
+  if (!sheet) return;
+  await authedFetch(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requests: [{ deleteSheet: { sheetId: sheet.properties.sheetId } }],
+    }),
   });
 }
 

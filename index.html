@@ -141,12 +141,13 @@
       </div>
 
       <h2 class="section-title">売上シートとの収支計算</h2>
-      <p class="muted">売上シートの「ダッシュボード」タブ33行目以降の月別集計（年月・総売上・総バック額・店の純利益）を読み取り、経費合計と突き合わせて「収支」タブを自動作成します。</p>
+      <p class="muted">売上シートの「ダッシュボード」タブ33行目以降の月別集計（年月・総売上・総バック額・店の純利益）と経費合計を、専用の「経営収支管理」スプレッドシートに書き出します。家賃・給与・光熱費・広告宣伝費はそのスプレッドシート内で毎月手入力してください（最終利益は自動計算されます）。</p>
       <div class="row">
         <input id="sales-sheet-url" type="text" placeholder="売上シートのURL">
         <button id="save-sales-sheet-btn" class="btn-secondary">保存</button>
       </div>
       <p id="sales-sheet-status" class="muted"></p>
+      <button id="open-profit-sheet-btn" class="btn-secondary">収支スプレッドシートを開く</button>
 
       <h2 class="section-title">データ</h2>
       <button id="open-sheet-btn" class="btn-secondary">Googleスプレッドシートを開く</button>

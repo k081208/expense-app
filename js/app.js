@@ -118,7 +118,12 @@ async function syncSummaries(spreadsheetId) {
   await api.updateSummarySheets(spreadsheetId, expenses, categories).catch(() => {});
   const salesId = config.getSalesSpreadsheetId();
   if (salesId) {
-    await api.updateProfitLossSheet(spreadsheetId, salesId, expenses).catch(() => {});
+    try {
+      const profitSpreadsheetId = await api.ensureProfitSpreadsheet();
+      await api.updateProfitLossSheet(profitSpreadsheetId, salesId, expenses);
+    } catch (err) {
+      // 収支シートの更新に失敗しても経費側の同期は継続する
+    }
   }
 }
 
@@ -725,14 +730,26 @@ $('save-sales-sheet-btn').addEventListener('click', async () => {
   salesSheetStatus.textContent = '確認中...';
   try {
     await ensureSignedIn();
-    const spreadsheetId = await api.ensureSpreadsheet();
-    await api.updateProfitLossSheet(spreadsheetId, salesId, expenses);
+    const profitSpreadsheetId = await api.ensureProfitSpreadsheet();
+    await api.updateProfitLossSheet(profitSpreadsheetId, salesId, expenses);
     config.setSalesSpreadsheetId(salesId);
+
+    // 以前は経費スプレッドシート内に簡易版の「収支」タブを作っていたため、
+    // 専用スプレッドシートに移行したこの機会に片付けておく
+    const expenseSpreadsheetId = await api.ensureSpreadsheet();
+    await api.removeSheetIfExists(expenseSpreadsheetId, '収支').catch(() => {});
+
     salesSheetUrlInput.value = '';
-    salesSheetStatus.textContent = `連携しました(シートID: ${salesId})`;
+    salesSheetStatus.textContent = `連携しました。収支スプレッドシートを作成/更新しました。`;
   } catch (err) {
     salesSheetStatus.textContent = `連携に失敗しました: ${err.message}`;
   }
+});
+
+$('open-profit-sheet-btn').addEventListener('click', () => {
+  const id = config.getProfitSpreadsheetId();
+  if (id) window.open(`https://docs.google.com/spreadsheets/d/${id}/edit`, '_blank', 'noopener');
+  else alert('収支スプレッドシートがまだ作成されていません');
 });
 
 $('open-sheet-btn').addEventListener('click', () => {
