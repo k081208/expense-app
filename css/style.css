@@ -170,6 +170,9 @@ html, body {
 .form-message.success { color: #16a34a; }
 .form-message.error { color: var(--danger); }
 
+.ocr-status { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.ocr-status.done { color: #16a34a; }
+
 .section-title {
   font-size: 15px;
   font-weight: 700;
@@ -266,13 +269,18 @@ html, body {
   padding: 10px 12px;
   margin-bottom: 6px;
 }
+.category-list .category-actions {
+  display: flex;
+  gap: 14px;
+}
 .category-list button {
   background: none;
   border: none;
-  color: var(--danger);
   font-size: 14px;
   cursor: pointer;
 }
+.category-list button.rename-btn { color: var(--primary); }
+.category-list button:not(.rename-btn) { color: var(--danger); }
 
 .bottom-nav {
   display: flex;

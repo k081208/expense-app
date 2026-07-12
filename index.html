@@ -79,6 +79,7 @@
           <input id="f-receipt" type="file" accept="image/*" capture="environment">
           <img id="receipt-preview" class="hidden">
           <button type="button" id="receipt-clear" class="btn-link hidden">写真を削除</button>
+          <p id="ocr-status" class="ocr-status hidden"></p>
         </div>
 
         <button type="submit" class="btn-primary">記録する</button>
@@ -155,6 +156,7 @@
 </section>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="./js/vendor/tesseract/tesseract.min.js"></script>
 <script type="module" src="./js/app.js"></script>
 </body>
 </html>

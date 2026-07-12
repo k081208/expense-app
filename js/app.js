@@ -4,6 +4,7 @@ import * as api from './api.js';
 import * as store from './store.js';
 import * as idb from './idb.js';
 import { drawCategoryBarChart, drawMonthlyTrendChart } from './charts.js';
+import { recognizeReceipt } from './ocr.js';
 
 // ---------- state ----------
 let categories = store.getCachedCategories();
@@ -37,6 +38,7 @@ const memoInput = $('f-memo');
 const receiptInput = $('f-receipt');
 const receiptPreview = $('receipt-preview');
 const receiptClearBtn = $('receipt-clear');
+const ocrStatus = $('ocr-status');
 const formMessage = $('form-message');
 const recentListEl = $('recent-list');
 
@@ -278,12 +280,25 @@ function renderCategoryList() {
     const li = document.createElement('li');
     const span = document.createElement('span');
     span.textContent = cat;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = '削除';
-    btn.addEventListener('click', () => removeCategory(cat));
+
+    const actions = document.createElement('div');
+    actions.className = 'category-actions';
+
+    const renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'rename-btn';
+    renameBtn.textContent = '名前変更';
+    renameBtn.addEventListener('click', () => renameCategory(cat));
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.textContent = '削除';
+    delBtn.addEventListener('click', () => removeCategory(cat));
+
+    actions.appendChild(renameBtn);
+    actions.appendChild(delBtn);
     li.appendChild(span);
-    li.appendChild(btn);
+    li.appendChild(actions);
     categoryListEl.appendChild(li);
   });
 }
@@ -324,6 +339,28 @@ function clearReceiptSelection() {
   receiptInput.value = '';
   receiptPreview.classList.add('hidden');
   receiptClearBtn.classList.add('hidden');
+  ocrStatus.classList.add('hidden');
+  ocrStatus.classList.remove('done');
+}
+
+async function runReceiptOcr(file) {
+  ocrStatus.textContent = 'レシートを読み取り中...';
+  ocrStatus.classList.remove('hidden', 'done');
+  try {
+    const result = await recognizeReceipt(file);
+    if (result.date) dateInput.value = result.date;
+    if (result.amount) amountInput.value = result.amount;
+    if (result.place) memoInput.value = result.place;
+
+    if (result.date || result.amount || result.place) {
+      ocrStatus.textContent = '読み取りました。内容が正しいか確認してください。';
+      ocrStatus.classList.add('done');
+    } else {
+      ocrStatus.textContent = '読み取れませんでした。手動で入力してください。';
+    }
+  } catch (err) {
+    ocrStatus.textContent = '読み取りに失敗しました。手動で入力してください。';
+  }
 }
 
 receiptInput.addEventListener('change', () => {
@@ -337,6 +374,7 @@ receiptInput.addEventListener('change', () => {
       receiptClearBtn.classList.remove('hidden');
     };
     reader.readAsDataURL(file);
+    runReceiptOcr(file);
   }
 });
 
@@ -454,6 +492,26 @@ $('export-csv-btn').addEventListener('click', () => {
 });
 
 // ---------- カテゴリ管理 ----------
+async function renameCategory(cat) {
+  const next = prompt('新しいカテゴリ名を入力してください', cat);
+  if (!next || !next.trim() || next.trim() === cat) return;
+  const newName = next.trim();
+  if (categories.includes(newName)) { alert('既に存在するカテゴリです'); return; }
+  if (!navigator.onLine) { alert('オフラインのためカテゴリを変更できません'); return; }
+  const nextCategories = categories.map((c) => (c === cat ? newName : c));
+  try {
+    await ensureSignedIn();
+    const spreadsheetId = await api.ensureSpreadsheet();
+    await api.saveCategories(spreadsheetId, nextCategories);
+    categories = nextCategories;
+    store.setCachedCategories(categories);
+    renderCategoryList();
+    renderCategorySelect();
+  } catch (err) {
+    alert(`保存に失敗しました: ${err.message}`);
+  }
+}
+
 async function removeCategory(cat) {
   if (!confirm(`「${cat}」を削除しますか？`)) return;
   if (!navigator.onLine) { alert('オフラインのためカテゴリを変更できません'); return; }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keihi-app-cache-v1';
+const CACHE_NAME = 'keihi-app-cache-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,7 +9,11 @@ const APP_SHELL = [
   './js/api.js',
   './js/store.js',
   './js/charts.js',
+  './js/ocr.js',
   './js/app.js',
+  './js/vendor/tesseract/tesseract.min.js',
+  './js/vendor/tesseract/worker.min.js',
+  './js/vendor/tesseract/tesseract-core-simd-lstm.wasm.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',

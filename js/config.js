@@ -6,7 +6,7 @@ export const SPREADSHEET_NAME = '経費管理アプリデータ';
 export const RECEIPT_FOLDER_NAME = '経費管理アプリ_レシート';
 export const APP_TAG = 'keihi-app-v1';
 
-export const DEFAULT_CATEGORIES = ['交通費', '飲食費', '消耗品費', '交際費', '通信費', 'その他'];
+export const DEFAULT_CATEGORIES = ['交通費', '食品代', '酒類', '消耗品費', '交際費', '通信費', 'その他'];
 
 const STORAGE_KEYS = {
   clientId: 'keihi.clientId',
