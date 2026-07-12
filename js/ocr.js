@@ -33,8 +33,26 @@ function drawToCanvas(source, sourceW, sourceH, maxDim) {
   return canvas;
 }
 
-// canvasを指定角度(度)だけ回転させた新しいcanvasを返す(はみ出さないようキャンバスも拡大する)
-function rotateCanvas(srcCanvas, angleDeg) {
+// 傾き検出の候補角度を比較する用: キャンバスサイズを固定した正方形に白背景で
+// 回転描画する。角度ごとにキャンバスの大きさが変わると行の分散を公平に比較
+// できず、はみ出た余白が透明(黒扱い)になるとノイズにもなるため、これを避ける
+function rotateIntoFixedCanvas(srcCanvas, angleDeg, size) {
+  const angle = (angleDeg * Math.PI) / 180;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+  ctx.translate(size / 2, size / 2);
+  ctx.rotate(angle);
+  ctx.drawImage(srcCanvas, -srcCanvas.width / 2, -srcCanvas.height / 2);
+  return canvas;
+}
+
+// OCR本番に使う画像に実際に傾き補正をかける用: はみ出さないようキャンバス
+// 自体を必要な大きさまで広げ、余白は白で塗る
+function rotateCanvasFit(srcCanvas, angleDeg) {
   if (!angleDeg) return srcCanvas;
   const angle = (angleDeg * Math.PI) / 180;
   const w = srcCanvas.width;
@@ -48,6 +66,8 @@ function rotateCanvas(srcCanvas, angleDeg) {
   canvas.width = newW;
   canvas.height = newH;
   const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, newW, newH);
   ctx.translate(newW / 2, newH / 2);
   ctx.rotate(angle);
   ctx.drawImage(srcCanvas, -w / 2, -h / 2);
@@ -86,19 +106,28 @@ function rowInkVariance(canvas) {
 // 最大になる(=文字行が最もくっきり水平に並ぶ)角度を採用する
 function estimateSkewAngle(bitmap) {
   const small = drawToCanvas(bitmap, bitmap.width, bitmap.height, 360);
+  const size = Math.ceil(Math.sqrt((small.width ** 2) + (small.height ** 2)));
+  const scoreAt = (angle) => rowInkVariance(rotateIntoFixedCanvas(small, angle, size));
 
-  let best = { angle: 0, score: -Infinity };
+  const baseScore = scoreAt(0);
+  let best = { angle: 0, score: baseScore };
   for (let angle = -50; angle <= 50; angle += 5) {
-    const score = rowInkVariance(rotateCanvas(small, angle));
+    if (angle === 0) continue;
+    const score = scoreAt(angle);
     if (score > best.score) best = { angle, score };
   }
 
   let refined = best;
   for (let angle = best.angle - 4; angle <= best.angle + 4; angle += 1) {
-    const score = rowInkVariance(rotateCanvas(small, angle));
+    const score = scoreAt(angle);
     if (score > refined.score) refined = { angle, score };
   }
 
+  // 角度0(補正なし)より明らかに良くない場合は、誤検出で綺麗な写真を
+  // 崩さないよう補正しない
+  if (refined.score < baseScore * 1.15) {
+    return 0;
+  }
   return refined.angle;
 }
 
@@ -114,7 +143,7 @@ async function preprocessImage(file) {
   const skewAngle = estimateSkewAngle(bitmap);
 
   const scaled = drawToCanvas(bitmap, bitmap.width, bitmap.height, 1800);
-  const canvas = Math.abs(skewAngle) >= 1 ? rotateCanvas(scaled, skewAngle) : scaled;
+  const canvas = Math.abs(skewAngle) >= 1 ? rotateCanvasFit(scaled, skewAngle) : scaled;
 
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
