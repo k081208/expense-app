@@ -24,7 +24,9 @@ function getWorker() {
 // コントラストの弱いレシート写真でも読み取りやすくするため、
 // 白黒二値化(大津の手法)してからOCRにかける
 async function preprocessImage(file) {
-  const bitmap = await createImageBitmap(file);
+  // iPhoneのカメラ写真はEXIFに回転情報を持つことが多く、それを無視すると
+  // 文字が横倒し・上下逆になりOCRが全く合わなくなるため、明示的に補正する
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   const maxDim = 1800;
   const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
