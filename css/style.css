@@ -295,7 +295,16 @@ html, body {
 }
 .category-list .category-actions {
   display: flex;
-  gap: 14px;
+  align-items: center;
+  gap: 10px;
+}
+.category-list button.move-btn {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.category-list button.move-btn:disabled {
+  opacity: 0.3;
 }
 .category-list button {
   background: none;

@@ -2,7 +2,7 @@
 
 // 更新のたびに1つずつ増やす。設定画面に表示され、Service Workerのキャッシュ
 // バージョンにも使われるため、更新が実機に反映されたか確認できる
-export const APP_VERSION = '10';
+export const APP_VERSION = '11';
 
 export const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/cloud-vision';
 
@@ -10,7 +10,7 @@ export const SPREADSHEET_NAME = '経費管理アプリデータ';
 export const RECEIPT_FOLDER_NAME = '経費管理アプリ_レシート';
 export const APP_TAG = 'keihi-app-v1';
 
-export const DEFAULT_CATEGORIES = ['交通費', '食品代', '酒類', '消耗品費', '交際費', '通信費', 'その他'];
+export const DEFAULT_CATEGORIES = ['食品代', '消耗品費', '酒類', '交通費', '交際費', '通信費', 'その他'];
 
 const STORAGE_KEYS = {
   clientId: 'keihi.clientId',

@@ -297,13 +297,27 @@ function renderReport() {
 
 function renderCategoryList() {
   categoryListEl.innerHTML = '';
-  categories.forEach((cat) => {
+  categories.forEach((cat, index) => {
     const li = document.createElement('li');
     const span = document.createElement('span');
     span.textContent = cat;
 
     const actions = document.createElement('div');
     actions.className = 'category-actions';
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'move-btn';
+    upBtn.textContent = '▲';
+    upBtn.disabled = index === 0;
+    upBtn.addEventListener('click', () => moveCategory(index, -1));
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'move-btn';
+    downBtn.textContent = '▼';
+    downBtn.disabled = index === categories.length - 1;
+    downBtn.addEventListener('click', () => moveCategory(index, 1));
 
     const renameBtn = document.createElement('button');
     renameBtn.type = 'button';
@@ -316,6 +330,8 @@ function renderCategoryList() {
     delBtn.textContent = '削除';
     delBtn.addEventListener('click', () => removeCategory(cat));
 
+    actions.appendChild(upBtn);
+    actions.appendChild(downBtn);
     actions.appendChild(renameBtn);
     actions.appendChild(delBtn);
     li.appendChild(span);
@@ -575,6 +591,29 @@ $('export-csv-btn').addEventListener('click', () => {
 });
 
 // ---------- カテゴリ管理 ----------
+async function moveCategory(index, delta) {
+  const targetIndex = index + delta;
+  if (targetIndex < 0 || targetIndex >= categories.length) return;
+  if (!navigator.onLine) { alert('オフラインのためカテゴリを変更できません'); return; }
+
+  const next = categories.slice();
+  const [moved] = next.splice(index, 1);
+  next.splice(targetIndex, 0, moved);
+
+  try {
+    await ensureSignedIn();
+    const spreadsheetId = await api.ensureSpreadsheet();
+    await api.saveCategories(spreadsheetId, next);
+    categories = next;
+    store.setCachedCategories(categories);
+    renderCategoryList();
+    renderCategorySelect();
+    api.updateMonthlySummary(spreadsheetId, expenses, categories).catch(() => {});
+  } catch (err) {
+    alert(`保存に失敗しました: ${err.message}`);
+  }
+}
+
 async function renameCategory(cat) {
   const next = prompt('新しいカテゴリ名を入力してください', cat);
   if (!next || !next.trim() || next.trim() === cat) return;
