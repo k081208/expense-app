@@ -33,117 +33,13 @@ function drawToCanvas(source, sourceW, sourceH, maxDim) {
   return canvas;
 }
 
-// 傾き検出の候補角度を比較する用: キャンバスサイズを固定した正方形に白背景で
-// 回転描画する。角度ごとにキャンバスの大きさが変わると行の分散を公平に比較
-// できず、はみ出た余白が透明(黒扱い)になるとノイズにもなるため、これを避ける
-function rotateIntoFixedCanvas(srcCanvas, angleDeg, size) {
-  const angle = (angleDeg * Math.PI) / 180;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, size, size);
-  ctx.translate(size / 2, size / 2);
-  ctx.rotate(angle);
-  ctx.drawImage(srcCanvas, -srcCanvas.width / 2, -srcCanvas.height / 2);
-  return canvas;
-}
-
-// OCR本番に使う画像に実際に傾き補正をかける用: はみ出さないようキャンバス
-// 自体を必要な大きさまで広げ、余白は白で塗る
-function rotateCanvasFit(srcCanvas, angleDeg) {
-  if (!angleDeg) return srcCanvas;
-  const angle = (angleDeg * Math.PI) / 180;
-  const w = srcCanvas.width;
-  const h = srcCanvas.height;
-  const cos = Math.abs(Math.cos(angle));
-  const sin = Math.abs(Math.sin(angle));
-  const newW = Math.max(1, Math.round(w * cos + h * sin));
-  const newH = Math.max(1, Math.round(w * sin + h * cos));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = newW;
-  canvas.height = newH;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, newW, newH);
-  ctx.translate(newW / 2, newH / 2);
-  ctx.rotate(angle);
-  ctx.drawImage(srcCanvas, -w / 2, -h / 2);
-  return canvas;
-}
-
-// 「文字の行がまっすぐ水平に揃っているほど、行ごとのインク量(暗さ)の
-// 偏りが大きくなる」という性質を利用して、傾き補正の良し悪しを評価する
-function rowInkVariance(canvas) {
-  const w = canvas.width;
-  const h = canvas.height;
-  const { data } = canvas.getContext('2d').getImageData(0, 0, w, h);
-  const rowSums = new Float64Array(h);
-  for (let y = 0; y < h; y += 1) {
-    let sum = 0;
-    const rowStart = y * w * 4;
-    for (let x = 0; x < w; x += 1) {
-      const idx = rowStart + x * 4;
-      sum += 255 - (0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
-    }
-    rowSums[y] = sum;
-  }
-  let mean = 0;
-  for (let y = 0; y < h; y += 1) mean += rowSums[y];
-  mean /= h;
-  let variance = 0;
-  for (let y = 0; y < h; y += 1) {
-    const diff = rowSums[y] - mean;
-    variance += diff * diff;
-  }
-  return variance / h;
-}
-
-// レシートを斜めに撮影しても文字の行が水平になるよう、傾き角度を推定する。
-// 小さく縮小した画像に対して候補角度を総当たりし、行ごとのインク量の分散が
-// 最大になる(=文字行が最もくっきり水平に並ぶ)角度を採用する
-function estimateSkewAngle(bitmap) {
-  const small = drawToCanvas(bitmap, bitmap.width, bitmap.height, 360);
-  const size = Math.ceil(Math.sqrt((small.width ** 2) + (small.height ** 2)));
-  const scoreAt = (angle) => rowInkVariance(rotateIntoFixedCanvas(small, angle, size));
-
-  const baseScore = scoreAt(0);
-  let best = { angle: 0, score: baseScore };
-  for (let angle = -90; angle <= 90; angle += 5) {
-    if (angle === 0) continue;
-    const score = scoreAt(angle);
-    if (score > best.score) best = { angle, score };
-  }
-
-  let refined = best;
-  for (let angle = best.angle - 4; angle <= best.angle + 4; angle += 1) {
-    const score = scoreAt(angle);
-    if (score > refined.score) refined = { angle, score };
-  }
-
-  // 角度0(補正なし)より明らかに良くない場合は、誤検出で綺麗な写真を
-  // 崩さないよう補正しない
-  if (refined.score < baseScore * 1.15) {
-    return 0;
-  }
-  return refined.angle;
-}
-
-// 白黒に完全二値化すると、レシート背後の背景(テーブル等)が黒い塊になって
-// ノイズになり、かえって精度が落ちることが分かったため、階調を残したまま
-// コントラストだけを強めるグレースケール変換にする
+// 自作の傾き自動補正は、まっすぐ撮れている写真まで誤って回転させてしまう
+// 不具合が繰り返し発生したため廃止した。EXIFの向き補正とコントラスト調整のみ行う
 async function preprocessImage(file) {
   // iPhoneのカメラ写真はEXIFに回転情報を持つことが多く、それを無視すると
   // 文字が横倒し・上下逆になりOCRが全く合わなくなるため、明示的に補正する
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-
-  // レシートが斜めに写っている場合でも文字行が水平になるよう傾きを補正する
-  const skewAngle = estimateSkewAngle(bitmap);
-
-  const scaled = drawToCanvas(bitmap, bitmap.width, bitmap.height, 1800);
-  const canvas = Math.abs(skewAngle) >= 1 ? rotateCanvasFit(scaled, skewAngle) : scaled;
+  const canvas = drawToCanvas(bitmap, bitmap.width, bitmap.height, 1800);
 
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
@@ -172,7 +68,7 @@ async function preprocessImage(file) {
     data[i + 2] = stretched;
   }
   ctx.putImageData(imageData, 0, 0);
-  return { canvas, skewAngle };
+  return canvas;
 }
 
 function percentileValue(hist, total, percentile) {
@@ -217,8 +113,7 @@ export function matchKnownStore(text, storeList) {
 
 export async function recognizeReceipt(file, storeList = []) {
   const worker = await getWorker();
-  const preprocessed = await preprocessImage(file).catch(() => ({ canvas: file, skewAngle: null }));
-  const { canvas: image, skewAngle } = preprocessed;
+  const image = await preprocessImage(file).catch(() => file);
   const { data } = await worker.recognize(image);
   const text = data.text || '';
   const debugImage = image instanceof HTMLCanvasElement ? image.toDataURL('image/png') : null;
@@ -229,7 +124,7 @@ export async function recognizeReceipt(file, storeList = []) {
     amount: extractAmount(text),
     place: matchedStore || extractPlace(text),
     debugImage,
-    skewAngle,
+    source: 'local',
   };
 }
 
@@ -241,7 +136,7 @@ function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
-function extractDate(text) {
+export function extractDate(text) {
   const t = toHalfWidthDigits(text);
 
   let m = t.match(/令和\s*(\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
@@ -269,7 +164,7 @@ function extractDate(text) {
 
 const TOTAL_KEYWORDS = /(合計金額|お会計|ご請求|請求金額|総合計|合計|小計)/;
 
-function extractAmount(text) {
+export function extractAmount(text) {
   const t = toHalfWidthDigits(text);
   const lines = t.split(/\n/);
 
@@ -304,7 +199,7 @@ const IGNORE_LINE_PATTERNS = [
   /合計|小計|お預り|お釣り|点数/,
 ];
 
-function extractPlace(text) {
+export function extractPlace(text) {
   const lines = text
     .split(/\n/)
     .map((l) => l.trim())

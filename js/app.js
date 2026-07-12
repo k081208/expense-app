@@ -5,6 +5,7 @@ import * as store from './store.js';
 import * as idb from './idb.js';
 import { drawCategoryBarChart, drawMonthlyTrendChart } from './charts.js';
 import { recognizeReceipt } from './ocr.js';
+import { recognizeReceiptCloud } from './vision.js';
 
 // ---------- state ----------
 let categories = store.getCachedCategories();
@@ -396,31 +397,50 @@ function clearReceiptSelection() {
 async function runReceiptOcr(file) {
   ocrStatus.textContent = 'レシートを読み取り中...';
   ocrStatus.classList.remove('hidden', 'done');
-  try {
-    const result = await recognizeReceipt(file, knownStores);
-    if (result.date) dateInput.value = result.date;
-    if (result.amount) amountInput.value = result.amount;
-    if (result.place) memoInput.value = result.place;
 
-    if (result.date || result.amount || result.place) {
-      ocrStatus.textContent = '読み取りました。内容が正しいか確認してください。';
-      ocrStatus.classList.add('done');
-    } else {
-      ocrStatus.textContent = '読み取れませんでした。手動で入力してください。';
-    }
+  let result = null;
+  let cloudError = null;
 
-    if (result.debugImage) {
-      ocrDebugPreview.src = result.debugImage;
-      ocrDebugPreview.classList.remove('hidden');
+  if (navigator.onLine) {
+    try {
+      await ensureSignedIn();
+      result = await recognizeReceiptCloud(file, knownStores);
+    } catch (err) {
+      cloudError = err;
     }
-    const angleLabel = result.skewAngle !== null && result.skewAngle !== undefined ? `${result.skewAngle}°` : '不明';
-    ocrDebugText.textContent = `[検出した傾き補正角度] ${angleLabel}\n\n[読み取った生テキスト]\n${result.rawText || '(空)'}`;
-    ocrDebugText.classList.remove('hidden');
-  } catch (err) {
-    ocrStatus.textContent = '読み取りに失敗しました。手動で入力してください。';
-    ocrDebugText.textContent = `[エラー]\n${err && err.message ? err.message : err}`;
-    ocrDebugText.classList.remove('hidden');
   }
+
+  if (!result) {
+    try {
+      result = await recognizeReceipt(file, knownStores);
+    } catch (err) {
+      ocrStatus.textContent = '読み取りに失敗しました。手動で入力してください。';
+      const reason = cloudError ? `${cloudError.message}\n${err.message}` : err.message;
+      ocrDebugText.textContent = `[エラー]\n${reason}`;
+      ocrDebugText.classList.remove('hidden');
+      return;
+    }
+  }
+
+  if (result.date) dateInput.value = result.date;
+  if (result.amount) amountInput.value = result.amount;
+  if (result.place) memoInput.value = result.place;
+
+  const sourceLabel = result.source === 'cloud' ? 'オンライン高精度認識' : '簡易認識(オフライン/端末内)';
+  if (result.date || result.amount || result.place) {
+    ocrStatus.textContent = `読み取りました(${sourceLabel})。内容が正しいか確認してください。`;
+    ocrStatus.classList.add('done');
+  } else {
+    ocrStatus.textContent = `読み取れませんでした(${sourceLabel})。手動で入力してください。`;
+  }
+
+  if (result.debugImage) {
+    ocrDebugPreview.src = result.debugImage;
+    ocrDebugPreview.classList.remove('hidden');
+  }
+  const cloudErrorNote = cloudError ? `[オンライン認識の失敗理由] ${cloudError.message}\n\n` : '';
+  ocrDebugText.textContent = `${cloudErrorNote}[読み取り方式] ${sourceLabel}\n\n[読み取った生テキスト]\n${result.rawText || '(空)'}`;
+  ocrDebugText.classList.remove('hidden');
 }
 
 receiptInput.addEventListener('change', () => {

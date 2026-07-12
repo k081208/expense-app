@@ -1,7 +1,7 @@
 // このバージョン文字列は js/config.js の APP_VERSION と手動で合わせる。
 // (importで共有すると、type:'module' のService WorkerはSafariで対応が
 //  不安定なため、あえて素朴なクラシックスクリプトのままにしている)
-const CACHE_NAME = 'keihi-app-cache-v8';
+const CACHE_NAME = 'keihi-app-cache-v9';
 const APP_SHELL = [
   './',
   './index.html',
@@ -13,6 +13,7 @@ const APP_SHELL = [
   './js/store.js',
   './js/charts.js',
   './js/ocr.js',
+  './js/vision.js',
   './js/app.js',
   './js/vendor/tesseract/tesseract.min.js',
   './js/vendor/tesseract/worker.min.js',
