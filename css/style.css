@@ -170,6 +170,8 @@ html, body {
 .form-message.success { color: #16a34a; }
 .form-message.error { color: var(--danger); }
 
+.ocr-hint { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+
 .ocr-status { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .ocr-status.done { color: #16a34a; }
 
