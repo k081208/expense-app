@@ -21,6 +21,87 @@ function getWorker() {
   return workerPromise;
 }
 
+// 元画像(またはcanvas)を指定サイズに収まるよう縮小してcanvasに描画する
+function drawToCanvas(source, sourceW, sourceH, maxDim) {
+  const scale = Math.min(1, maxDim / Math.max(sourceW, sourceH));
+  const w = Math.max(1, Math.round(sourceW * scale));
+  const h = Math.max(1, Math.round(sourceH * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d').drawImage(source, 0, 0, w, h);
+  return canvas;
+}
+
+// canvasを指定角度(度)だけ回転させた新しいcanvasを返す(はみ出さないようキャンバスも拡大する)
+function rotateCanvas(srcCanvas, angleDeg) {
+  if (!angleDeg) return srcCanvas;
+  const angle = (angleDeg * Math.PI) / 180;
+  const w = srcCanvas.width;
+  const h = srcCanvas.height;
+  const cos = Math.abs(Math.cos(angle));
+  const sin = Math.abs(Math.sin(angle));
+  const newW = Math.max(1, Math.round(w * cos + h * sin));
+  const newH = Math.max(1, Math.round(w * sin + h * cos));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = newW;
+  canvas.height = newH;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(newW / 2, newH / 2);
+  ctx.rotate(angle);
+  ctx.drawImage(srcCanvas, -w / 2, -h / 2);
+  return canvas;
+}
+
+// 「文字の行がまっすぐ水平に揃っているほど、行ごとのインク量(暗さ)の
+// 偏りが大きくなる」という性質を利用して、傾き補正の良し悪しを評価する
+function rowInkVariance(canvas) {
+  const w = canvas.width;
+  const h = canvas.height;
+  const { data } = canvas.getContext('2d').getImageData(0, 0, w, h);
+  const rowSums = new Float64Array(h);
+  for (let y = 0; y < h; y += 1) {
+    let sum = 0;
+    const rowStart = y * w * 4;
+    for (let x = 0; x < w; x += 1) {
+      const idx = rowStart + x * 4;
+      sum += 255 - (0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
+    }
+    rowSums[y] = sum;
+  }
+  let mean = 0;
+  for (let y = 0; y < h; y += 1) mean += rowSums[y];
+  mean /= h;
+  let variance = 0;
+  for (let y = 0; y < h; y += 1) {
+    const diff = rowSums[y] - mean;
+    variance += diff * diff;
+  }
+  return variance / h;
+}
+
+// レシートを斜めに撮影しても文字の行が水平になるよう、傾き角度を推定する。
+// 小さく縮小した画像に対して候補角度を総当たりし、行ごとのインク量の分散が
+// 最大になる(=文字行が最もくっきり水平に並ぶ)角度を採用する
+function estimateSkewAngle(bitmap) {
+  const small = drawToCanvas(bitmap, bitmap.width, bitmap.height, 360);
+
+  let best = { angle: 0, score: -Infinity };
+  for (let angle = -50; angle <= 50; angle += 5) {
+    const score = rowInkVariance(rotateCanvas(small, angle));
+    if (score > best.score) best = { angle, score };
+  }
+
+  let refined = best;
+  for (let angle = best.angle - 4; angle <= best.angle + 4; angle += 1) {
+    const score = rowInkVariance(rotateCanvas(small, angle));
+    if (score > refined.score) refined = { angle, score };
+  }
+
+  return refined.angle;
+}
+
 // 白黒に完全二値化すると、レシート背後の背景(テーブル等)が黒い塊になって
 // ノイズになり、かえって精度が落ちることが分かったため、階調を残したまま
 // コントラストだけを強めるグレースケール変換にする
@@ -28,17 +109,16 @@ async function preprocessImage(file) {
   // iPhoneのカメラ写真はEXIFに回転情報を持つことが多く、それを無視すると
   // 文字が横倒し・上下逆になりOCRが全く合わなくなるため、明示的に補正する
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  const maxDim = 1800;
-  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-  const w = Math.max(1, Math.round(bitmap.width * scale));
-  const h = Math.max(1, Math.round(bitmap.height * scale));
 
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
+  // レシートが斜めに写っている場合でも文字行が水平になるよう傾きを補正する
+  const skewAngle = estimateSkewAngle(bitmap);
+
+  const scaled = drawToCanvas(bitmap, bitmap.width, bitmap.height, 1800);
+  const canvas = Math.abs(skewAngle) >= 1 ? rotateCanvas(scaled, skewAngle) : scaled;
+
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(bitmap, 0, 0, w, h);
-
+  const w = canvas.width;
+  const h = canvas.height;
   const imageData = ctx.getImageData(0, 0, w, h);
   const { data } = imageData;
   const pixelCount = w * h;
@@ -63,7 +143,7 @@ async function preprocessImage(file) {
     data[i + 2] = stretched;
   }
   ctx.putImageData(imageData, 0, 0);
-  return canvas;
+  return { canvas, skewAngle };
 }
 
 function percentileValue(hist, total, percentile) {
@@ -78,7 +158,8 @@ function percentileValue(hist, total, percentile) {
 
 export async function recognizeReceipt(file) {
   const worker = await getWorker();
-  const image = await preprocessImage(file).catch(() => file);
+  const preprocessed = await preprocessImage(file).catch(() => ({ canvas: file, skewAngle: null }));
+  const { canvas: image, skewAngle } = preprocessed;
   const { data } = await worker.recognize(image);
   const text = data.text || '';
   const debugImage = image instanceof HTMLCanvasElement ? image.toDataURL('image/png') : null;
@@ -88,6 +169,7 @@ export async function recognizeReceipt(file) {
     amount: extractAmount(text),
     place: extractPlace(text),
     debugImage,
+    skewAngle,
   };
 }
 

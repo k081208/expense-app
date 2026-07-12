@@ -381,7 +381,8 @@ async function runReceiptOcr(file) {
       ocrDebugPreview.src = result.debugImage;
       ocrDebugPreview.classList.remove('hidden');
     }
-    ocrDebugText.textContent = `[読み取った生テキスト]\n${result.rawText || '(空)'}`;
+    const angleLabel = result.skewAngle !== null && result.skewAngle !== undefined ? `${result.skewAngle}°` : '不明';
+    ocrDebugText.textContent = `[検出した傾き補正角度] ${angleLabel}\n\n[読み取った生テキスト]\n${result.rawText || '(空)'}`;
     ocrDebugText.classList.remove('hidden');
   } catch (err) {
     ocrStatus.textContent = '読み取りに失敗しました。手動で入力してください。';
