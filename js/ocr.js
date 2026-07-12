@@ -12,14 +12,84 @@ function getWorker() {
       corePath: `${VENDOR_BASE}tesseract-core-simd-lstm.wasm.js`,
       langPath: LANG_DATA_BASE,
       gzip: true,
+    }).then(async (worker) => {
+      // 6 = レシートのような単一のまとまったテキストブロックとして読む(既定の全自動レイアウト解析より安定する)
+      await worker.setParameters({ tessedit_pageseg_mode: '6' });
+      return worker;
     });
   }
   return workerPromise;
 }
 
+// コントラストの弱いレシート写真でも読み取りやすくするため、
+// 白黒二値化(大津の手法)してからOCRにかける
+async function preprocessImage(file) {
+  const bitmap = await createImageBitmap(file);
+  const maxDim = 1800;
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bitmap, 0, 0, w, h);
+
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const { data } = imageData;
+  const pixelCount = w * h;
+  const gray = new Uint8ClampedArray(pixelCount);
+  const hist = new Array(256).fill(0);
+  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+    const g = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+    gray[p] = g;
+    hist[g] += 1;
+  }
+
+  const threshold = otsuThreshold(hist, pixelCount);
+
+  for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+    const v = gray[p] < threshold ? 0 : 255;
+    data[i] = v;
+    data[i + 1] = v;
+    data[i + 2] = v;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function otsuThreshold(hist, total) {
+  let sum = 0;
+  for (let t = 0; t < 256; t += 1) sum += t * hist[t];
+
+  let sumB = 0;
+  let weightB = 0;
+  let maxVariance = 0;
+  let threshold = 127;
+
+  for (let t = 0; t < 256; t += 1) {
+    weightB += hist[t];
+    if (weightB === 0) continue;
+    const weightF = total - weightB;
+    if (weightF === 0) break;
+
+    sumB += t * hist[t];
+    const meanB = sumB / weightB;
+    const meanF = (sum - sumB) / weightF;
+    const variance = weightB * weightF * (meanB - meanF) * (meanB - meanF);
+    if (variance > maxVariance) {
+      maxVariance = variance;
+      threshold = t;
+    }
+  }
+  return threshold;
+}
+
 export async function recognizeReceipt(file) {
   const worker = await getWorker();
-  const { data } = await worker.recognize(file);
+  const image = await preprocessImage(file).catch(() => file);
+  const { data } = await worker.recognize(image);
   const text = data.text || '';
   return {
     rawText: text,

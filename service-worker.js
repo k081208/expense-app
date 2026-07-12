@@ -1,4 +1,4 @@
-const CACHE_NAME = 'keihi-app-cache-v3';
+const CACHE_NAME = 'keihi-app-cache-v4';
 const APP_SHELL = [
   './',
   './index.html',
