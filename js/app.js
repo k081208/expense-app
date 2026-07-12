@@ -74,11 +74,20 @@ function showScreen(name) {
 
 // ---------- サービスワーカー登録 ----------
 function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./service-worker.js').catch(() => {});
-    });
-  }
+  if (!('serviceWorker' in navigator)) return;
+
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded) return;
+    reloaded = true;
+    window.location.reload();
+  });
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').then((registration) => {
+      registration.update().catch(() => {});
+    }).catch(() => {});
+  });
 }
 
 // ---------- 認証まわり ----------
