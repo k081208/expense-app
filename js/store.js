@@ -4,6 +4,7 @@ const KEYS = {
   categories: 'keihi.cache.categories',
   queue: 'keihi.pendingQueue',
   receiptBlobs: 'keihi.pendingReceipts', // IndexedDB は使わずシンプルに保持数を絞る前提
+  knownStores: 'keihi.knownStores',
 };
 
 function readJson(key, fallback) {
@@ -33,6 +34,16 @@ export function getCachedCategories() {
 
 export function setCachedCategories(list) {
   writeJson(KEYS.categories, list);
+}
+
+// ---- よく使う店舗(OCRのマッチング精度を上げるための端末内リスト。Googleシートには保存しない) ----
+
+export function getKnownStores() {
+  return readJson(KEYS.knownStores, []);
+}
+
+export function setKnownStores(list) {
+  writeJson(KEYS.knownStores, list);
 }
 
 // ---- 未同期キュー（オフライン時に登録した経費を一時保存） ----

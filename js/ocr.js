@@ -111,7 +111,7 @@ function estimateSkewAngle(bitmap) {
 
   const baseScore = scoreAt(0);
   let best = { angle: 0, score: baseScore };
-  for (let angle = -50; angle <= 50; angle += 5) {
+  for (let angle = -90; angle <= 90; angle += 5) {
     if (angle === 0) continue;
     const score = scoreAt(angle);
     if (score > best.score) best = { angle, score };
@@ -185,18 +185,49 @@ function percentileValue(hist, total, percentile) {
   return 255;
 }
 
-export async function recognizeReceipt(file) {
+// レシートOCRの文字化けに強いよう、事前に登録した「よく行く店」の名前と、
+// 生テキストに含まれる文字の重なり具合を比較して一番近いものを採用する。
+// 一部の文字が誤読されても、店名の文字が十分残っていればマッチする
+function charOverlapRatio(name, text) {
+  const nameChars = Array.from(name);
+  const textChars = Array.from(text);
+  const used = new Array(textChars.length).fill(false);
+  let matched = 0;
+  nameChars.forEach((ch) => {
+    const idx = textChars.findIndex((c, i) => !used[i] && c === ch);
+    if (idx !== -1) {
+      used[idx] = true;
+      matched += 1;
+    }
+  });
+  return nameChars.length ? matched / nameChars.length : 0;
+}
+
+export function matchKnownStore(text, storeList) {
+  if (!storeList || !storeList.length || !text) return null;
+  let best = null;
+  storeList.forEach((name) => {
+    const ratio = charOverlapRatio(name, text);
+    if (ratio >= 0.6 && (!best || ratio > best.ratio)) {
+      best = { name, ratio };
+    }
+  });
+  return best ? best.name : null;
+}
+
+export async function recognizeReceipt(file, storeList = []) {
   const worker = await getWorker();
   const preprocessed = await preprocessImage(file).catch(() => ({ canvas: file, skewAngle: null }));
   const { canvas: image, skewAngle } = preprocessed;
   const { data } = await worker.recognize(image);
   const text = data.text || '';
   const debugImage = image instanceof HTMLCanvasElement ? image.toDataURL('image/png') : null;
+  const matchedStore = matchKnownStore(text, storeList);
   return {
     rawText: text,
     date: extractDate(text),
     amount: extractAmount(text),
-    place: extractPlace(text),
+    place: matchedStore || extractPlace(text),
     debugImage,
     skewAngle,
   };

@@ -9,6 +9,7 @@ import { recognizeReceipt } from './ocr.js';
 // ---------- state ----------
 let categories = store.getCachedCategories();
 let expenses = store.getCachedExpenses();
+let knownStores = store.getKnownStores();
 let selectedReceiptFile = null;
 let currentView = 'view-input';
 let listMonth = startOfMonth(new Date());
@@ -56,6 +57,8 @@ const trendChartCanvas = $('trend-chart');
 const settingsSyncStatus = $('settings-sync-status');
 const categoryListEl = $('category-list');
 const newCategoryInput = $('new-category-input');
+const storeListEl = $('store-list');
+const newStoreInput = $('new-store-input');
 const appVersionEl = $('app-version');
 
 // ---------- utilities ----------
@@ -319,10 +322,39 @@ function renderCategoryList() {
   });
 }
 
+function renderStoreList() {
+  storeListEl.innerHTML = '';
+  knownStores.forEach((name) => {
+    const li = document.createElement('li');
+    const span = document.createElement('span');
+    span.textContent = name;
+
+    const actions = document.createElement('div');
+    actions.className = 'category-actions';
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.textContent = '削除';
+    delBtn.addEventListener('click', () => removeKnownStore(name));
+
+    actions.appendChild(delBtn);
+    li.appendChild(span);
+    li.appendChild(actions);
+    storeListEl.appendChild(li);
+  });
+}
+
+function removeKnownStore(name) {
+  knownStores = knownStores.filter((s) => s !== name);
+  store.setKnownStores(knownStores);
+  renderStoreList();
+}
+
 function renderSettings() {
   const queue = store.getQueue();
   settingsSyncStatus.textContent = queue.length ? `未同期のデータが ${queue.length} 件あります` : 'すべて同期済みです';
   renderCategoryList();
+  renderStoreList();
 }
 
 function updateSyncBadge() {
@@ -365,7 +397,7 @@ async function runReceiptOcr(file) {
   ocrStatus.textContent = 'レシートを読み取り中...';
   ocrStatus.classList.remove('hidden', 'done');
   try {
-    const result = await recognizeReceipt(file);
+    const result = await recognizeReceipt(file, knownStores);
     if (result.date) dateInput.value = result.date;
     if (result.amount) amountInput.value = result.amount;
     if (result.place) memoInput.value = result.place;
@@ -575,6 +607,17 @@ $('add-category-btn').addEventListener('click', async () => {
   } catch (err) {
     alert(`保存に失敗しました: ${err.message}`);
   }
+});
+
+// ---------- よく使う店舗(ローカルのみ) ----------
+$('add-store-btn').addEventListener('click', () => {
+  const val = newStoreInput.value.trim();
+  if (!val) return;
+  if (knownStores.includes(val)) { alert('既に登録されています'); return; }
+  knownStores = [...knownStores, val];
+  store.setKnownStores(knownStores);
+  newStoreInput.value = '';
+  renderStoreList();
 });
 
 // ---------- 設定: その他 ----------
