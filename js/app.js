@@ -87,9 +87,11 @@ function registerServiceWorker() {
   });
 
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js', { type: 'module' }).then((registration) => {
+    navigator.serviceWorker.register('./service-worker.js').then((registration) => {
       registration.update().catch(() => {});
-    }).catch(() => {});
+    }).catch((err) => {
+      console.error('service worker registration failed', err);
+    });
   });
 }
 
