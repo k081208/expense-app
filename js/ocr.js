@@ -21,8 +21,9 @@ function getWorker() {
   return workerPromise;
 }
 
-// コントラストの弱いレシート写真でも読み取りやすくするため、
-// 白黒二値化(大津の手法)してからOCRにかける
+// 白黒に完全二値化すると、レシート背後の背景(テーブル等)が黒い塊になって
+// ノイズになり、かえって精度が落ちることが分かったため、階調を残したまま
+// コントラストだけを強めるグレースケール変換にする
 async function preprocessImage(file) {
   // iPhoneのカメラ写真はEXIFに回転情報を持つことが多く、それを無視すると
   // 文字が横倒し・上下逆になりOCRが全く合わなくなるため、明示的に補正する
@@ -49,43 +50,30 @@ async function preprocessImage(file) {
     hist[g] += 1;
   }
 
-  const threshold = otsuThreshold(hist, pixelCount);
+  // 極端に暗い/明るい外れ値(背景や影)に引っ張られないよう、
+  // 上下2%を除いた範囲を0〜255に引き伸ばす
+  const low = percentileValue(hist, pixelCount, 0.02);
+  const high = percentileValue(hist, pixelCount, 0.98);
+  const range = Math.max(high - low, 1);
 
   for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
-    const v = gray[p] < threshold ? 0 : 255;
-    data[i] = v;
-    data[i + 1] = v;
-    data[i + 2] = v;
+    const stretched = Math.min(255, Math.max(0, Math.round(((gray[p] - low) / range) * 255)));
+    data[i] = stretched;
+    data[i + 1] = stretched;
+    data[i + 2] = stretched;
   }
   ctx.putImageData(imageData, 0, 0);
   return canvas;
 }
 
-function otsuThreshold(hist, total) {
-  let sum = 0;
-  for (let t = 0; t < 256; t += 1) sum += t * hist[t];
-
-  let sumB = 0;
-  let weightB = 0;
-  let maxVariance = 0;
-  let threshold = 127;
-
-  for (let t = 0; t < 256; t += 1) {
-    weightB += hist[t];
-    if (weightB === 0) continue;
-    const weightF = total - weightB;
-    if (weightF === 0) break;
-
-    sumB += t * hist[t];
-    const meanB = sumB / weightB;
-    const meanF = (sum - sumB) / weightF;
-    const variance = weightB * weightF * (meanB - meanF) * (meanB - meanF);
-    if (variance > maxVariance) {
-      maxVariance = variance;
-      threshold = t;
-    }
+function percentileValue(hist, total, percentile) {
+  const target = total * percentile;
+  let cumulative = 0;
+  for (let v = 0; v < 256; v += 1) {
+    cumulative += hist[v];
+    if (cumulative >= target) return v;
   }
-  return threshold;
+  return 255;
 }
 
 export async function recognizeReceipt(file) {

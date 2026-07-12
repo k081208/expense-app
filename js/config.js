@@ -2,7 +2,7 @@
 
 // 更新のたびに1つずつ増やす。設定画面に表示され、Service Workerのキャッシュ
 // バージョンにも使われるため、更新が実機に反映されたか確認できる
-export const APP_VERSION = '3';
+export const APP_VERSION = '4';
 
 export const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file';
 
