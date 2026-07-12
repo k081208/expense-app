@@ -1,4 +1,6 @@
-const CACHE_NAME = 'keihi-app-cache-v4';
+import { APP_VERSION } from './js/config.js';
+
+const CACHE_NAME = `keihi-app-cache-v${APP_VERSION}`;
 const APP_SHELL = [
   './',
   './index.html',

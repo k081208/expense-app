@@ -54,6 +54,7 @@ const trendChartCanvas = $('trend-chart');
 const settingsSyncStatus = $('settings-sync-status');
 const categoryListEl = $('category-list');
 const newCategoryInput = $('new-category-input');
+const appVersionEl = $('app-version');
 
 // ---------- utilities ----------
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
@@ -72,6 +73,8 @@ function showScreen(name) {
   Object.entries(screens).forEach(([key, el]) => el.classList.toggle('hidden', key !== name));
 }
 
+appVersionEl.textContent = `バージョン: ${config.APP_VERSION}`;
+
 // ---------- サービスワーカー登録 ----------
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
@@ -84,7 +87,7 @@ function registerServiceWorker() {
   });
 
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js').then((registration) => {
+    navigator.serviceWorker.register('./service-worker.js', { type: 'module' }).then((registration) => {
       registration.update().catch(() => {});
     }).catch(() => {});
   });
