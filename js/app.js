@@ -39,6 +39,8 @@ const receiptInput = $('f-receipt');
 const receiptPreview = $('receipt-preview');
 const receiptClearBtn = $('receipt-clear');
 const ocrStatus = $('ocr-status');
+const ocrDebugPreview = $('ocr-debug-preview');
+const ocrDebugText = $('ocr-debug-text');
 const formMessage = $('form-message');
 const recentListEl = $('recent-list');
 
@@ -355,6 +357,8 @@ function clearReceiptSelection() {
   receiptClearBtn.classList.add('hidden');
   ocrStatus.classList.add('hidden');
   ocrStatus.classList.remove('done');
+  ocrDebugPreview.classList.add('hidden');
+  ocrDebugText.classList.add('hidden');
 }
 
 async function runReceiptOcr(file) {
@@ -372,8 +376,17 @@ async function runReceiptOcr(file) {
     } else {
       ocrStatus.textContent = '読み取れませんでした。手動で入力してください。';
     }
+
+    if (result.debugImage) {
+      ocrDebugPreview.src = result.debugImage;
+      ocrDebugPreview.classList.remove('hidden');
+    }
+    ocrDebugText.textContent = `[読み取った生テキスト]\n${result.rawText || '(空)'}`;
+    ocrDebugText.classList.remove('hidden');
   } catch (err) {
     ocrStatus.textContent = '読み取りに失敗しました。手動で入力してください。';
+    ocrDebugText.textContent = `[エラー]\n${err && err.message ? err.message : err}`;
+    ocrDebugText.classList.remove('hidden');
   }
 }
 

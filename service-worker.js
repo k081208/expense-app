@@ -1,7 +1,7 @@
 // このバージョン文字列は js/config.js の APP_VERSION と手動で合わせる。
 // (importで共有すると、type:'module' のService WorkerはSafariで対応が
 //  不安定なため、あえて素朴なクラシックスクリプトのままにしている)
-const CACHE_NAME = 'keihi-app-cache-v2';
+const CACHE_NAME = 'keihi-app-cache-v3';
 const APP_SHELL = [
   './',
   './index.html',

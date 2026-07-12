@@ -93,11 +93,13 @@ export async function recognizeReceipt(file) {
   const image = await preprocessImage(file).catch(() => file);
   const { data } = await worker.recognize(image);
   const text = data.text || '';
+  const debugImage = image instanceof HTMLCanvasElement ? image.toDataURL('image/png') : null;
   return {
     rawText: text,
     date: extractDate(text),
     amount: extractAmount(text),
     place: extractPlace(text),
+    debugImage,
   };
 }
 
