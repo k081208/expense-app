@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/*
+ * デザイントークン。
+ * 金融アプリらしい安心感（濃紺ベース・落ち着いた面）と、
+ * 余白を大きく取ったモダンな見た目を両立させる。
+ * 端末のダークモードにも追従する。
+ */
+:root {
+  --background: #f4f6fa;
+  --surface: #ffffff;
+  --surface-muted: #eef1f7;
+  --border: #e2e8f0;
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --brand: #1e3a8a;
+  --brand-soft: #dbeafe;
+  --accent: #2563eb;
+  --danger: #dc2626;
+  --success: #059669;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b1020;
+    --surface: #141c31;
+    --surface-muted: #1b2540;
+    --border: #26314f;
+    --foreground: #f1f5f9;
+    --muted: #94a3b8;
+    --brand: #93c5fd;
+    --brand-soft: #1e3a8a;
+    --accent: #60a5fa;
+    --danger: #f87171;
+    --success: #34d399;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+}
+
+html {
+  /* iOS で横向きにしたときの文字サイズ自動調整を止める */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  /* iPhone のノッチ / ホームインジケータを避ける（PWA 表示時に効く） */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* 金額表示は等幅の数字にして桁が揺れないようにする */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
