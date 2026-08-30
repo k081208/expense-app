@@ -35,11 +35,16 @@ card-billing/
 │   │   ├── supabase/         Supabase クライアント (client / server / admin)
 │   │   ├── env.ts            環境変数の読み取り
 │   │   ├── format.ts         金額・日付の表示フォーマット
-│   │   └── logger.ts         機密情報をマスクするログ出力
+│   │   ├── logger.ts         機密情報をマスクするログ出力
+│   │   ├── crypto.ts         OAuth トークンの暗号化・復号 (AES-256-GCM)
 │   ├── providers/            カード会社ごとの取得処理（詳細は providers/README.md）
 │   ├── services/             取得のオーケストレーション (STEP 10)
-│   └── types/billing.ts      共通データ形式
-├── supabase/migrations/      DB マイグレーション (STEP 2)
+│   └── types/
+│       ├── billing.ts        共通データ形式
+│       └── database.ts       DB スキーマに対応する型
+├── supabase/
+│   ├── migrations/           DB マイグレーション
+│   └── tests/                RLS・セキュリティ検証（詳細は supabase/README.md）
 └── public/                   PWA アイコン
 ```
 
@@ -59,6 +64,17 @@ http://localhost:3000 を開くと、環境変数の設定状況を確認でき�
 `.env.local.example` を参照してください。`NEXT_PUBLIC_` が付いた値だけがブラウザに露出します。
 サービスロールキー・OAuth クライアントシークレット・暗号鍵には**絶対に `NEXT_PUBLIC_` を付けないでください**。
 
+## データベース
+
+マイグレーションは `supabase/migrations/` にあります。適用方法・テーブル構成・
+型の再生成手順は [supabase/README.md](supabase/README.md) を参照してください。
+
+RLS とセキュリティ要件はローカルの PostgreSQL 15 以上に対して検証できます。
+
+```bash
+npm run db:test
+```
+
 ## セキュリティ方針
 
 - カード番号の全桁・セキュリティコード(CVV)・カード会社のログインパスワードは保存しない（下 4 桁のみ任意で保存）
@@ -67,11 +83,13 @@ http://localhost:3000 を開くと、環境変数の設定状況を確認でき�
 - Supabase の Row Level Security により、他ユーザーのデータは参照できない
 - Gmail は必要最小限のスコープのみを使い、メール本文は保存せず抽出した項目だけを保存する
 - ログにはトークン・メールアドレス・カード番号らしき数字列を出力しない（`lib/logger.ts` でマスク）
+- OAuth トークンは AES-256-GCM で暗号化して保存し、暗号鍵は環境変数のみで管理する（DB にも Git にも置かない）
+- OAuth トークンは非公開スキーマ (`private`) に置き、ブラウザ用クライアントからは本人であっても取得できない
 
 ## 実装ステップ
 
 - [x] STEP 1 プロジェクト基盤
-- [ ] STEP 2 データベース設計
+- [x] STEP 2 データベース設計・RLS
 - [ ] STEP 3 Google ログイン
 - [ ] STEP 4 ダッシュボード UI
 - [ ] STEP 5 カード登録機能

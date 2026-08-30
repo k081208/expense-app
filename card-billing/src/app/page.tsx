@@ -7,7 +7,7 @@ import { hasPublicSupabaseEnv, missingServerEnv, publicEnv } from "@/lib/env";
 export const dynamic = "force-dynamic";
 
 /**
- * STEP 1 時点のトップ画面。
+ * STEP 3 着手前のトップ画面。
  * まだ認証もダッシュボードも無いため、環境設定が正しく済んでいるかを確認できる
  * セットアップ状況画面を表示する。STEP 4 でダッシュボードに置き換える。
  */
@@ -26,7 +26,7 @@ export default function Home() {
   return (
     <AppShell
       title="カード請求まとめ"
-      subtitle="STEP 1: プロジェクト基盤のセットアップ"
+      subtitle="STEP 2 まで完了 / 環境設定の確認"
     >
       <div className="space-y-4">
         <SectionCard>
@@ -38,7 +38,7 @@ export default function Home() {
           </p>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             {allReady
-              ? "STEP 2（データベース設計）へ進む準備ができています。"
+              ? "STEP 3（Google ログイン）へ進む準備ができています。"
               : ".env.local.example をコピーして .env.local を作成し、値を入力してください。"}
           </p>
         </SectionCard>
@@ -68,7 +68,6 @@ export default function Home() {
 
         <SectionCard title="これから実装する内容">
           <ol className="space-y-2 text-sm text-muted">
-            <li>STEP 2 データベース設計（テーブル + RLS）</li>
             <li>STEP 3 Google ログイン</li>
             <li>STEP 4 ダッシュボード UI</li>
             <li>STEP 5 カード登録機能</li>

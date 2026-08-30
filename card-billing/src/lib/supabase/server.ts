@@ -3,6 +3,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { requirePublicEnv } from "@/lib/env";
+import type { Database } from "@/types/database";
 
 /**
  * Server Component / Server Action / Route Handler 用の Supabase クライアント。
@@ -14,7 +15,7 @@ export async function createClient() {
   const { supabaseUrl, supabaseAnonKey } = requirePublicEnv();
   const cookieStore = await cookies();
 
-  return createServerClient(supabaseUrl, supabaseAnonKey, {
+  return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

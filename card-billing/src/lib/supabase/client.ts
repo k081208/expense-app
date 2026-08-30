@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import { requirePublicEnv } from "@/lib/env";
+import type { Database } from "@/types/database";
 
 /**
  * ブラウザ用 Supabase クライアント。
@@ -9,5 +10,5 @@ import { requirePublicEnv } from "@/lib/env";
  */
 export function createClient() {
   const { supabaseUrl, supabaseAnonKey } = requirePublicEnv();
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return createBrowserClient<Database>(supabaseUrl, supabaseAnonKey);
 }

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requirePublicEnv, serverEnv } from "@/lib/env";
+import type { Database } from "@/types/database";
 
 /**
  * サービスロールキーを使う管理用クライアント。**RLS を迂回する**ため、
@@ -14,7 +15,7 @@ export function createAdminClient() {
   const { supabaseUrl } = requirePublicEnv();
   const { supabaseServiceRoleKey } = serverEnv();
 
-  return createSupabaseClient(supabaseUrl, supabaseServiceRoleKey, {
+  return createSupabaseClient<Database>(supabaseUrl, supabaseServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
