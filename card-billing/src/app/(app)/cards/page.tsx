@@ -59,6 +59,17 @@ export default async function CardsPage(props: PageProps<"/cards">) {
           </ul>
         )}
 
+        <p className="px-1 text-xs leading-relaxed text-muted">
+          請求メールをどの Gmail アカウントから読むかは{" "}
+          <Link
+            href="/settings/connections"
+            className="rounded underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            Gmail 連携
+          </Link>{" "}
+          で設定できます。
+        </p>
+
         {cards.some((card) => !card.enabled) ? (
           <p className="px-1 text-xs leading-relaxed text-muted">
             「使用しない」にしたカードはダッシュボードに表示されませんが、

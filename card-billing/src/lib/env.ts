@@ -49,10 +49,22 @@ export function serverEnv() {
       "SUPABASE_SERVICE_ROLE_KEY",
       process.env.SUPABASE_SERVICE_ROLE_KEY,
     ),
-    googleClientId: required("GOOGLE_CLIENT_ID", process.env.GOOGLE_CLIENT_ID),
-    googleClientSecret: required(
-      "GOOGLE_CLIENT_SECRET",
-      process.env.GOOGLE_CLIENT_SECRET,
+    /**
+     * Gmail 連携専用の OAuth クライアント。
+     * STEP 3 のログイン（Supabase Auth の Google プロバイダ）とは別のものを使う。
+     */
+    gmailClientId: required(
+      "GOOGLE_GMAIL_CLIENT_ID",
+      process.env.GOOGLE_GMAIL_CLIENT_ID,
+    ),
+    gmailClientSecret: required(
+      "GOOGLE_GMAIL_CLIENT_SECRET",
+      process.env.GOOGLE_GMAIL_CLIENT_SECRET,
+    ),
+    /** Google Cloud Console に登録するコールバック URL。 */
+    gmailRedirectUri: required(
+      "GOOGLE_GMAIL_REDIRECT_URI",
+      process.env.GOOGLE_GMAIL_REDIRECT_URI,
     ),
     /** connections テーブルのトークンを暗号化するための鍵 (32byte / base64)。 */
     tokenEncryptionKey: required(
@@ -64,12 +76,28 @@ export function serverEnv() {
   };
 }
 
+/**
+ * Gmail 連携用の OAuth クライアントが設定されているか。
+ *
+ * 値そのものは返さない（画面へ渡らないようにするため）。設定画面で
+ * 「まだ設定が済んでいない」ことを案内するためだけに使う。
+ */
+export function hasGmailOAuthEnv(): boolean {
+  return Boolean(
+    process.env.GOOGLE_GMAIL_CLIENT_ID &&
+      process.env.GOOGLE_GMAIL_CLIENT_SECRET &&
+      process.env.GOOGLE_GMAIL_REDIRECT_URI &&
+      process.env.TOKEN_ENCRYPTION_KEY,
+  );
+}
+
 /** サーバー専用環境変数のうち、未設定のものの名前を返す（セットアップ状況の表示用）。 */
 export function missingServerEnv(): string[] {
   return [
     "SUPABASE_SERVICE_ROLE_KEY",
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_GMAIL_CLIENT_ID",
+    "GOOGLE_GMAIL_CLIENT_SECRET",
+    "GOOGLE_GMAIL_REDIRECT_URI",
     "TOKEN_ENCRYPTION_KEY",
     "CRON_SECRET",
   ].filter((name) => !process.env[name]);

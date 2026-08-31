@@ -28,16 +28,21 @@ card-billing/
 │   │   ├── manifest.ts       PWA マニフェスト
 │   │   ├── (auth)/login/     ログイン画面（公開）
 │   │   ├── (app)/            ログイン必須エリア
-│   │   └── auth/callback/    Google 認証のコールバック
+│   │   │   └── settings/connections/  Gmail 連携の設定 (STEP 7)
+│   │   ├── auth/callback/    ログインのコールバック（STEP 3）
+│   │   └── api/integrations/gmail/callback/
+│   │                         Gmail 連携のコールバック（STEP 7・ログインとは別）
 │   ├── components/
 │   │   ├── ui/               画面共通の部品
 │   │   ├── auth/             ログイン・ログアウトのフォーム
 │   │   ├── setup/            環境変数の設定案内
 │   │   ├── dashboard/        ダッシュボード用   (STEP 4)
-│   │   └── cards/            カード登録用       (STEP 5)
+│   │   ├── cards/            カード登録用       (STEP 5)
+│   │   └── settings/         Gmail 連携の設定用 (STEP 7)
 │   ├── proxy.ts              セッション更新と保護ページの前さばき
 │   ├── lib/
 │   │   ├── auth/             ログイン・ログアウト・遷移先の検証
+│   │   ├── gmail/            Gmail 連携の OAuth・連携の保存・トークン更新 (STEP 7)
 │   │   ├── supabase/         Supabase クライアント (client / server / admin / proxy)
 │   │   ├── env.ts            環境変数の読み取り
 │   │   ├── format.ts         金額・日付の表示フォーマット
@@ -127,6 +132,112 @@ Supabase Auth の Google プロバイダでログインします。**この設�
 | 認可の判定 | `src/app/(app)/layout.tsx` の `requireUser()` が Auth サーバーで検証（proxy の判定は前さばき） |
 | 遷移先の検証 | `?next=` は同一サイト内の相対パスのみ許可（オープンリダイレクト対策） |
 
+## Gmail 連携（複数アカウント対応）
+
+カード会社から届く「請求確定のお知らせ」メールを読み取るために、Gmail への
+読み取り権限をアプリへ渡します。**ログイン（STEP 3）とはまったく別の仕組みです。**
+
+### ログインとの違い
+
+| | ログイン（STEP 3） | Gmail 連携（STEP 7） |
+| --- | --- | --- |
+| 目的 | このアプリに入る | 請求メールを読む権限をもらう |
+| 仕組み | Supabase Auth の Google プロバイダ | アプリ自身が行う Google の認可コードフロー |
+| OAuth クライアント | Supabase に登録したもの | **別に作った Gmail 専用のもの** |
+| コールバック | `/auth/callback` | `/api/integrations/gmail/callback` |
+| スコープ | `openid email profile` | `openid email https://www.googleapis.com/auth/gmail.readonly` |
+| 連携できる数 | ログインは 1 アカウント | Gmail は**何アカウントでも**追加できる |
+
+ログイン用の Google アカウントと、メールを読む Google アカウントは別で構いません。
+ログインに使っていないアカウントの Gmail も連携できます。
+
+### 複数の Gmail を使い分ける
+
+カードごとに「どの Gmail アカウントから請求メールを読むか」を選べます。
+例えば、あるカードの明細は仕事用アドレスに、別のカードは個人用アドレスに届く、
+といった使い分けができます。設定は **Gmail 連携** 画面（`/settings/connections`）の
+「カードごとの取得元」から行い、**未設定**を選べば割り当てを外せます。
+
+### Google Cloud Console の設定
+
+ログイン用（STEP 3）とは**別の OAuth クライアント**を作ります。
+ログイン用のクライアントに Gmail のスコープを足さないでください。
+
+1. **APIとサービス → ライブラリ** で **Gmail API** を検索し、**有効にする**
+2. **APIとサービス → OAuth 同意画面**
+   - **データアクセス**（Data Access）で **スコープを追加** し、
+     `https://www.googleapis.com/auth/gmail.readonly` を追加する
+   - **対象**（Audience）の **テストユーザー** に、連携したい Google アカウントを
+     **すべて**追加する（連携する Gmail アカウントの分だけ必要です）
+3. **APIとサービス → 認証情報 → 認証情報を作成 → OAuth クライアント ID**
+   - アプリケーションの種類: **ウェブ アプリケーション**
+   - 名前は分かるように（例: `card-billing Gmail 連携`）
+   - **承認済みのリダイレクト URI** に次を登録する
+
+     ```
+     http://localhost:3000/api/integrations/gmail/callback
+     ```
+
+     Supabase の Callback URL でも `/auth/callback` でもありません。
+4. 表示された **クライアント ID / クライアント シークレット** を `.env.local` の
+   `GOOGLE_GMAIL_CLIENT_ID` / `GOOGLE_GMAIL_CLIENT_SECRET` に設定する
+5. `GOOGLE_GMAIL_REDIRECT_URI` に、手順 3 で登録した URI と**完全に同じ文字列**を設定する
+6. `TOKEN_ENCRYPTION_KEY` を設定する（`openssl rand -base64 32`）
+
+> 本番公開時は、本番 URL の `/api/integrations/gmail/callback` を Google の
+> 承認済みリダイレクト URI に**追加**し、`GOOGLE_GMAIL_REDIRECT_URI` も切り替えてください。
+
+### 要求するスコープ
+
+| スコープ | 用途 |
+| --- | --- |
+| `openid` | 連携先アカウントを一意に識別する (`sub`) |
+| `email` | どのアカウントを繋いだかを画面に表示する |
+| `https://www.googleapis.com/auth/gmail.readonly` | 請求メールを読む（読み取り専用） |
+
+`profile`・Drive・Calendar・送信権限は要求しません。書き込み・削除もできません。
+
+### トークンの保存方式
+
+| 項目 | 内容 |
+| --- | --- |
+| フロー | 認可コードフロー + PKCE (S256)。`state` と `code_verifier` は HttpOnly Cookie に短時間だけ置く |
+| ID トークン | 署名・`iss`・`aud`・`exp` を Google の公開鍵で検証する（Base64 を解いて信用することはしない） |
+| 保存場所 | 非公開スキーマ `private.oauth_credentials`（PostgREST に公開していない） |
+| 暗号化 | AES-256-GCM。鍵は `TOKEN_ENCRYPTION_KEY` のみ。DB にも Git にも鍵は置かない |
+| 読み書き | `service_role` だけが実行できる関数経由。ブラウザからは本人でも取得できない |
+| アカウントの識別 | Google の `sub`（メールアドレスは識別に使わない。変更されうるため） |
+
+### 再接続と解除
+
+- **再接続**: 同じ Google アカウントをもう一度連携すると、既存の連携を
+  **同じ ID のまま**更新します。カードごとの取得元の設定はやり直す必要がありません。
+- **解除**: Google 側でトークンを取り消し、保存しているトークンを削除して、
+  状態を「解除済み」にします。**カードごとの割り当ては残します**ので、
+  同じアカウントを繋ぎ直せばそのまま使えます。
+- 完全にやめる場合は、Google アカウントの
+  [サードパーティ アプリとの連携](https://myaccount.google.com/connections) からも
+  アクセス権を削除してください。
+
+### 開発中の注意
+
+- **テストモードの OAuth 同意画面では、リフレッシュトークンの有効期限が 7 日間です。**
+  1 週間ほど放置すると連携が切れて「再連携が必要」と表示されます。
+  そのときは「Gmail アカウントを追加」から同じアカウントを選び直してください。
+  （公開ステータスを「本番環境」にすると、この 7 日間の制限はなくなります）
+- テストユーザーに登録していない Google アカウントでは連携できません。
+- 連携できる数の上限はアプリ側では設けていませんが、テストモードでは
+  テストユーザーが 100 名までという Google 側の制限があります。
+
+### 本番公開前の注意
+
+`gmail.readonly` は Google の **制限付きスコープ（Restricted Scope）** です。
+自分とテストユーザーだけで使う分には申請は不要ですが、
+**一般公開する場合は Google の OAuth 認証（verification）とセキュリティ評価が必要**で、
+数週間から数か月かかることがあります。個人利用の範囲であれば、
+公開ステータスを「テスト」のままにして、テストユーザーに自分のアカウントを
+登録して使うのが簡単です。
+
 ## データベース
 
 マイグレーションは `supabase/migrations/` にあります。適用方法・テーブル構成・
@@ -172,16 +283,22 @@ ALLOW_BILLING_SEED=1 npm run billing:seed:clean -- --email あなたのメール
 - ログにはトークン・メールアドレス・カード番号らしき数字列を出力しない（`lib/logger.ts` でマスク）
 - OAuth トークンは AES-256-GCM で暗号化して保存し、暗号鍵は環境変数のみで管理する（DB にも Git にも置かない）
 - OAuth トークンは非公開スキーマ (`private`) に置き、ブラウザ用クライアントからは本人であっても取得できない
+- Gmail 連携はログインと別の OAuth クライアントを使い、ログイン側のスコープには Gmail を追加しない
+- Gmail 連携の `state` と PKCE の `code_verifier` は HttpOnly Cookie に短時間だけ置き、照合後に削除する
+- Google の ID トークンは署名・`iss`・`aud`・`exp` を検証したうえでのみ信用する
+- 連携先アカウントの識別には Google の `sub` を使い、メールアドレスは表示用にとどめる
+- サービスロールで行う操作は、必ず認証済みユーザーの `user_id` を条件に含めて他人の行に触れないようにする
+- 画面・URL・ログには認可コード / アクセストークン / リフレッシュトークン / ID トークンを一切出さない
 
 ## 実装ステップ
 
 - [x] STEP 1 プロジェクト基盤
 - [x] STEP 2 データベース設計・RLS
 - [x] STEP 3 Google ログイン
-- [ ] STEP 4 ダッシュボード UI
-- [ ] STEP 5 カード登録機能
-- [ ] STEP 6 ダミーデータによる請求表示
-- [ ] STEP 7 Gmail 連携
+- [x] STEP 4 ダッシュボード UI
+- [x] STEP 5 カード登録機能
+- [x] STEP 6 ダミーデータによる請求表示
+- [x] STEP 7 Gmail 連携（複数アカウント対応）
 - [ ] STEP 8 メール解析 Provider
 - [ ] STEP 9 API Provider
 - [ ] STEP 10 自動更新・手動更新
