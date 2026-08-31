@@ -35,18 +35,28 @@ export type CardCatalogEntry = {
 /**
  * 登録できるカード会社。
  *
- * 最初の 4 社は、本アプリの要件で名前が挙がっているカード会社をそのまま採用している
- * （STEP 2 の cards.provider_key のコメントにも同じキーを記載済み）。
+ * ここに並ぶのは、これまでのご依頼で名前が挙がったカード会社だけ。
  * 実在しないカード会社を勝手に増やすことはしない。
+ *
+ * 同じカード会社のカードを複数枚持つ場合も、キーは 1 つを共有する。
+ * 例) 楽天ゴールドと楽天 PINK はどちらも `rakuten`、JCB 2 枚はどちらも `jcb`。
+ * カードの区別は `display_name` と `cards.id` で行うため、券種ごとの
+ * キーを増やす必要はない（増やすと Provider の実装も券種の数だけ必要になる）。
  *
  * 新しいカード会社に対応するときは、この配列へ 1 行追加するだけでよい。
  * `provider_key` は文字列のままなので、データベースの変更は不要。
  */
 export const CARD_CATALOG: readonly CardCatalogEntry[] = [
   { key: "rakuten", name: "楽天カード", shortName: "楽天カード" },
-  { key: "smbc", name: "三井住友カード", shortName: "三井住友カード" },
+  { key: "jcb", name: "JCBカード", shortName: "JCB" },
   { key: "amex", name: "アメリカン・エキスプレス", shortName: "AMEX" },
   { key: "paypay", name: "PayPayカード", shortName: "PayPayカード" },
+  { key: "aupay", name: "au PAYカード", shortName: "au PAYカード" },
+  { key: "aeon", name: "イオンカード", shortName: "イオンカード" },
+  { key: "saison", name: "セゾンカード", shortName: "セゾンカード" },
+  { key: "jaccs", name: "JACCSカード", shortName: "JACCSカード" },
+  { key: "edion", name: "エディオンカード", shortName: "エディオンカード" },
+  { key: "smbc", name: "三井住友カード", shortName: "三井住友カード" },
   {
     key: "other",
     name: "その他のカード",

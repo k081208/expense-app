@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:test": "./supabase/tests/run.sh"
+    "db:test": "./supabase/tests/run.sh",
+    "billing:seed": "node scripts/seed-billing.mjs",
+    "billing:seed:clean": "node scripts/seed-billing.mjs --clean"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

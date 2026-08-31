@@ -12,12 +12,18 @@ export function formatYen(amount: number | null | undefined): string {
   return YEN.format(amount);
 }
 
-/** "YYYY-MM-DD" を「9月27日」にする。 */
+/**
+ * "YYYY-MM-DD" を「9月27日」にする。
+ * 想定外の形式が来ても「NaN」などを画面に出さず「支払日未定」に倒す。
+ */
 export function formatPaymentDate(date: string | null | undefined): string {
   if (!date) return "支払日未定";
-  const [, month, day] = date.split("-");
-  if (!month || !day) return "支払日未定";
-  return `${Number(month)}月${Number(day)}日`;
+  const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!matched) return "支払日未定";
+  const month = Number(matched[2]);
+  const day = Number(matched[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "支払日未定";
+  return `${month}月${day}日`;
 }
 
 /**
