@@ -67,6 +67,10 @@ export type CardBillingSummary = {
   source: BillingSource | null;
   fetchedAt: string | null;
   status: BillingStatus | "unknown";
+  /** 確定前の速報値・見込み額なら true。 */
+  isProvisional: boolean;
+  /** status === "error" のときの理由（ProviderErrorCode）。表示は必ず変換して行う。 */
+  errorCode: string | null;
 };
 
 /** 支払日ごとの合計（「9月10日 ¥181,000」の集計行）。 */

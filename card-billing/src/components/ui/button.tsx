@@ -9,8 +9,7 @@ const BASE =
   "inline-flex w-full items-center justify-center gap-2.5 rounded-xl px-5 " +
   "min-h-[52px] text-base font-semibold transition-colors " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent " +
-  "focus-visible:ring-offset-2 focus-visible:ring-offset-background " +
-  "disabled:cursor-not-allowed disabled:opacity-60";
+  "focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 const VARIANTS = {
   /** 主要な操作。 */
@@ -18,13 +17,24 @@ const VARIANTS = {
   /** 白地のボタン。Google のログインボタンなどに使う。 */
   surface:
     "border border-border bg-surface text-foreground hover:bg-surface-muted",
-  /** 補助的な操作。 */
-  quiet: "text-muted hover:bg-surface-muted",
+  /**
+   * 補助的な操作。塗りを持たないことで主要ボタンと差をつける。
+   * 文字色は薄くしない（ダークモードでコントラストが基準を下回るため）。
+   */
+  quiet: "border border-border text-foreground hover:bg-surface-muted",
 } as const;
+
+/**
+ * 無効時は変種の色を薄めるのではなく、専用の配色へ差し替える。
+ * 薄めるだけではダークモードで文字が読み取りにくくなるため。
+ * 塗りを持たせないことで、押せるボタンより目立たないようにしている。
+ */
+const DISABLED = "cursor-not-allowed border border-border text-muted";
 
 export function Button({
   variant = "primary",
   className = "",
+  disabled = false,
   children,
   ...props
 }: ComponentProps<"button"> & {
@@ -32,7 +42,11 @@ export function Button({
   children: ReactNode;
 }) {
   return (
-    <button className={`${BASE} ${VARIANTS[variant]} ${className}`} {...props}>
+    <button
+      disabled={disabled}
+      className={`${BASE} ${disabled ? DISABLED : VARIANTS[variant]} ${className}`}
+      {...props}
+    >
       {children}
     </button>
   );
