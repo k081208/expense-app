@@ -1,12 +1,6 @@
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
-/**
- * カードが 1 枚も登録されていないときの表示。
- *
- * カード登録機能は STEP 5 で実装するため、ここでは存在しないページへ
- * 遷移させない。ボタンは無効のまま置き、STEP 5 で action を渡すだけで
- * 動くようにしておく。
- */
+/** カードが 1 枚も登録されていないときの表示。 */
 export function DashboardEmptyState() {
   return (
     <section
@@ -43,12 +37,12 @@ export function DashboardEmptyState() {
       </p>
 
       <div className="mt-5">
-        <Button type="button" disabled aria-describedby="empty-state-note">
+        <Link
+          href="/cards/new"
+          className="inline-flex min-h-[52px] w-full items-center justify-center rounded-xl bg-brand px-5 text-base font-semibold text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:text-[#0b1020]"
+        >
           カードを登録
-        </Button>
-        <p id="empty-state-note" className="mt-2 text-xs text-muted">
-          カード登録は次のステップで利用できるようになります。
-        </p>
+        </Link>
       </div>
     </section>
   );

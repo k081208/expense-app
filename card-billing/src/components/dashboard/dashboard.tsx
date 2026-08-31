@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppShell } from "@/components/ui/app-shell";
 import { UserBadge } from "@/components/auth/user-badge";
 import { AccountCard } from "@/components/auth/account-card";
@@ -56,12 +57,21 @@ export function Dashboard({
           <DashboardEmptyState />
         ) : (
           <section aria-labelledby="cards-heading">
-            <h2
-              id="cards-heading"
-              className="mb-2 px-1 text-xs font-semibold tracking-wide text-muted"
-            >
-              登録カード
-            </h2>
+            <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
+              <h2
+                id="cards-heading"
+                className="text-xs font-semibold tracking-wide text-muted"
+              >
+                登録カード
+              </h2>
+              {/* 合計金額より目立たないよう、小さな文字リンクにする */}
+              <Link
+                href="/cards"
+                className="rounded px-1 text-xs text-muted underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                カード管理
+              </Link>
+            </div>
             <ul className="space-y-3">
               {cards.map((card) => (
                 <CardBillingItem key={card.cardId} card={card} now={now} />

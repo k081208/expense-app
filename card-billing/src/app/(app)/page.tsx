@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const user = await requireUser();
 
-  const cards = await getDashboardCards(user.id);
+  const cards = await getDashboardCards();
   const summary = summarizeDashboard(cards);
 
   // profiles は STEP 2 のトリガーで自動作成される。アプリ側からは INSERT せず、

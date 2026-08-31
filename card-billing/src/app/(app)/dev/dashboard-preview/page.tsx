@@ -28,6 +28,7 @@ function card(overrides: Partial<CardBillingSummary>): CardBillingSummary {
     provider: "sample",
     displayName: "サンプルカード",
     lastFour: null,
+    paymentDay: null,
     amount: null,
     paymentDate: null,
     source: "gmail",

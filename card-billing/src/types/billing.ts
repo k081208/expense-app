@@ -62,7 +62,14 @@ export type CardBillingSummary = {
   displayName: string;
   /** カード番号の下 4 桁のみ。未登録なら null。 */
   lastFour: string | null;
+  /**
+   * カード登録時に設定した標準的な支払日 (1-31)。未設定なら null。
+   * 「毎月27日」という補助表示に使う。実際の支払日 `paymentDate` とは別物で、
+   * 休日調整などは反映されていない。
+   */
+  paymentDay: number | null;
   amount: number | null;
+  /** 請求情報から取得した正式な支払日 ("YYYY-MM-DD")。未取得なら null。 */
   paymentDate: string | null;
   source: BillingSource | null;
   fetchedAt: string | null;

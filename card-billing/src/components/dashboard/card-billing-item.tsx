@@ -115,6 +115,14 @@ export function CardBillingItem({
         </p>
       )}
 
+      {/*
+        請求情報を取得できていない間は、登録時の「毎月○日」を目安として出す。
+        これは正式な支払日 (paymentDate) ではないため、表記を分けている。
+      */}
+      {!showsAmount && card.paymentDay ? (
+        <p className="mt-1 text-sm text-muted">毎月{card.paymentDay}日 支払い</p>
+      ) : null}
+
       <p className="mt-3 text-xs text-muted">
         最終更新：{formatLastUpdated(card.fetchedAt, now)}
       </p>
