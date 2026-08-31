@@ -62,8 +62,9 @@ values
   ('aaaaaaaa-0000-4000-8000-000000000001', 'c1111111-0000-4000-8000-000000000001', 82400, '2026-09-27', 'gmail', 'success'),
   ('bbbbbbbb-0000-4000-8000-000000000002', 'c2222222-0000-4000-8000-000000000002', 54200, '2026-09-10', 'api',   'success');
 
-insert into public.connections (id, user_id, kind, provider_key, scopes)
-values ('e1111111-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'google', 'google',
+insert into public.connections (id, user_id, kind, provider_key, external_account_id, scopes)
+values ('e1111111-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001', 'gmail', 'google',
+        'test-google-sub-a',
         array['https://www.googleapis.com/auth/gmail.readonly']);
 
 select public.oauth_credentials_upsert(
@@ -151,8 +152,8 @@ select test.denied('billing_records をクライアントから UPDATE できな
 select test.denied('fetch_logs へクライアントから INSERT できない',
   $$insert into public.fetch_logs (user_id, status) values ('bbbbbbbb-0000-4000-8000-000000000002', 'success')$$);
 select test.denied('connections をクライアントから INSERT できない',
-  $$insert into public.connections (user_id, kind, provider_key)
-    values ('bbbbbbbb-0000-4000-8000-000000000002', 'google', 'google')$$);
+  $$insert into public.connections (user_id, kind, provider_key, external_account_id)
+    values ('bbbbbbbb-0000-4000-8000-000000000002', 'gmail', 'google', 'test-google-sub-b')$$);
 select test.denied('profiles をクライアントから INSERT できない',
   $$insert into public.profiles (id) values ('bbbbbbbb-0000-4000-8000-000000000002')$$);
 

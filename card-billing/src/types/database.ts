@@ -13,8 +13,12 @@
 
 import type { BillingSource, BillingStatus } from "./billing";
 
-/** 連携の種類。'google' = Gmail 用、'api' = カード会社の公式 API。 */
-export type ConnectionKind = "google" | "api";
+/**
+ * 連携の用途。
+ * 'gmail' = 請求メールの取得元、'api' = カード会社の公式 API。
+ * 割り当て (card_connection_assignments.source) と同じ値を取る。
+ */
+export type ConnectionKind = "gmail" | "api";
 
 /** 連携の状態。 */
 export type ConnectionStatus = "connected" | "expired" | "revoked" | "error";
@@ -132,6 +136,13 @@ export type Database = {
           user_id: string;
           kind: ConnectionKind;
           provider_key: string;
+          /**
+           * 連携先アカウントの安定した一意 ID。
+           * Google は OpenID Connect の subject (sub)。メールアドレスは識別に使わない。
+           */
+          external_account_id: string | null;
+          /** 表示用のメールアドレス。OAuth で取得した値のみが入る。 */
+          account_email: string | null;
           status: ConnectionStatus;
           scopes: string[];
           connected_at: string | null;
@@ -147,6 +158,8 @@ export type Database = {
           user_id: string;
           kind: ConnectionKind;
           provider_key: string;
+          external_account_id?: string | null;
+          account_email?: string | null;
           status?: ConnectionStatus;
           scopes?: string[];
           connected_at?: string | null;
@@ -155,12 +168,40 @@ export type Database = {
           last_error_code?: string | null;
         };
         Update: {
+          account_email?: string | null;
           status?: ConnectionStatus;
           scopes?: string[];
           connected_at?: string | null;
           expires_at?: string | null;
           last_synced_at?: string | null;
           last_error_code?: string | null;
+        };
+        Relationships: [];
+      };
+
+      card_connection_assignments: {
+        Row: {
+          id: string;
+          user_id: string;
+          card_id: string;
+          connection_id: string;
+          /** 取得経路。connections.kind と一致する。 */
+          source: BillingSource;
+          enabled: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          card_id: string;
+          connection_id: string;
+          source: BillingSource;
+          enabled?: boolean;
+        };
+        Update: {
+          connection_id?: string;
+          enabled?: boolean;
         };
         Relationships: [];
       };
@@ -239,5 +280,6 @@ export type TablesUpdate<T extends keyof Database["public"]["Tables"]> =
 export type CardRow = Tables<"cards">;
 export type BillingRecordRow = Tables<"billing_records">;
 export type ConnectionRow = Tables<"connections">;
+export type CardConnectionAssignmentRow = Tables<"card_connection_assignments">;
 export type FetchLogRow = Tables<"fetch_logs">;
 export type ProfileRow = Tables<"profiles">;

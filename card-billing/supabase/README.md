@@ -12,6 +12,7 @@
 | `20260830120300_billing_records.sql` | `billing_records`、重複防止の一意制約・RLS |
 | `20260830120400_connections.sql` | `connections`（状態）、`private.oauth_credentials`（暗号化トークン）、サーバー専用 RPC |
 | `20260830120500_fetch_logs.sql` | `fetch_logs`、RLS |
+| `20260831090000_multi_gmail_connections.sql` | 複数 Gmail アカウント対応（`connections` の一意制約変更、`card_connection_assignments` 追加） |
 
 すべて SQL として再現可能です。Supabase Dashboard 上での手作業を前提とした構成は含めていません。
 
@@ -50,7 +51,8 @@ DB 構造の再現には不要です。
 | `public.profiles` | `auth.users` と 1:1 のユーザー情報 | SELECT / UPDATE（本人のみ） |
 | `public.cards` | 登録カード | SELECT / INSERT / UPDATE / DELETE（本人のみ） |
 | `public.billing_records` | 請求情報 | SELECT のみ（本人のみ） |
-| `public.connections` | 連携の**状態のみ** | SELECT のみ（本人のみ） |
+| `public.connections` | 連携の**状態のみ**（複数アカウント可） | SELECT のみ（本人のみ） |
+| `public.card_connection_assignments` | カードごとの取得元の割り当て | SELECT / INSERT / UPDATE / DELETE（本人のみ） |
 | `public.fetch_logs` | 取得処理の実行履歴 | SELECT のみ（本人のみ） |
 | `private.oauth_credentials` | 暗号化済み OAuth トークン | **なし**（API から到達不可） |
 
@@ -66,6 +68,13 @@ RLS とセキュリティ要件を検証します。
 # PostgreSQL を起動しておく
 ./supabase/tests/run.sh
 ```
+
+テストは 2 ファイルに分かれています。
+
+| ファイル | 内容 | 項目数 |
+| --- | --- | --- |
+| `tests/10_security_test.sql` | RLS・権限・制約（STEP 2） | 59 |
+| `tests/20_connections_test.sql` | 複数 Gmail アカウント対応（STEP 6.5） | 37 |
 
 `tests/00_local_bootstrap.sql` は Supabase のロール（`anon` / `authenticated` /
 `service_role`）と `auth` スキーマの最小構成をローカルに再現するためのものです。

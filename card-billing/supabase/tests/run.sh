@@ -21,3 +21,4 @@ done
 
 echo "== 検証 =="
 psql -v ON_ERROR_STOP=1 -q -d "${DB}" -f "${HERE}/10_security_test.sql"
+psql -v ON_ERROR_STOP=1 -q -d "${DB}" -f "${HERE}/20_connections_test.sql"
