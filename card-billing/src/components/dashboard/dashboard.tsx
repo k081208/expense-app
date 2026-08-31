@@ -68,13 +68,13 @@ export function Dashboard({
               <div className="flex shrink-0 items-baseline gap-3">
                 <Link
                   href="/settings/connections"
-                  className="rounded px-1 text-xs text-muted underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="rounded px-1 py-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   Gmail 連携
                 </Link>
                 <Link
                   href="/cards"
-                  className="rounded px-1 text-xs text-muted underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="rounded px-1 py-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   カード管理
                 </Link>

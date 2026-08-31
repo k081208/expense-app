@@ -118,7 +118,7 @@ export default async function GmailConnectionsPage(
             id="connections-heading"
             className="mb-2 px-1 text-xs font-semibold tracking-wide text-muted"
           >
-            連携中のアカウント
+            Gmail アカウント
           </h2>
           {connections.length === 0 ? (
             <SectionCard>
@@ -151,7 +151,7 @@ export default async function GmailConnectionsPage(
             </h2>
             <Link
               href="/cards"
-              className="rounded px-1 text-xs text-muted underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="rounded px-1 py-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               カード管理
             </Link>
