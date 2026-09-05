@@ -37,6 +37,7 @@ export function CardSourceItem({
 }) {
   const selectId = `card-source-${card.id}`;
   const lastFour = formatLastFour(card.last_four);
+  const current = connections.find((c) => c.id === selectedConnectionId) ?? null;
 
   return (
     <li className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -64,7 +65,12 @@ export function CardSourceItem({
           請求メールの取得元
         </label>
         <div className="flex flex-wrap items-center gap-2">
+          {/*
+            React 19 は action 完了後にフォームを初期値へ戻す。
+            保存した値を key にして作り直すことで、保存後も選んだ値が表示される。
+          */}
           <select
+            key={selectedConnectionId ?? "none"}
             id={selectId}
             name="connectionId"
             defaultValue={selectedConnectionId ?? ""}
@@ -83,6 +89,18 @@ export function CardSourceItem({
             <span className="sr-only">（{card.display_name}の取得元）</span>
           </PendingButton>
         </div>
+
+        {/* 保存済みの内容。フォームの部品ではないので、保存のたびに確実に更新される。 */}
+        <p className="text-xs text-muted" aria-live="polite">
+          現在の設定：
+          {current ? (
+            <span className="break-all text-foreground">
+              {current.account_email ?? "Gmail アカウント"}
+            </span>
+          ) : (
+            "未設定"
+          )}
+        </p>
       </form>
     </li>
   );
