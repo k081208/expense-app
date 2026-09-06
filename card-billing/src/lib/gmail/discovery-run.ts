@@ -16,6 +16,7 @@ import {
   DISCOVERY_DAYS_CEILING,
   DISCOVERY_MAX_RESULTS_CEILING,
   planDiscoveryTargets,
+  sanitizeExtraQuery,
   type CandidateHeader,
   type DiscoveryReport,
   type DiscoveryTarget,
@@ -42,6 +43,10 @@ export type DiscoveryOptions = {
   days?: number;
   maxResults?: number;
   includeSpamTrash?: boolean;
+  /** 指定したカード会社だけを探索する（未指定なら全単位） */
+  providerKey?: string | null;
+  /** 検索条件に追加する語（例: from:example.co.jp）。空なら何も足さない */
+  extraQuery?: string | null;
 };
 
 function clamp(value: number | undefined, fallback: number, min: number, max: number): number {
@@ -71,7 +76,7 @@ async function discoverTarget(
   target: DiscoveryTarget,
   options: Required<DiscoveryOptions>,
 ): Promise<DiscoveryTargetResult> {
-  const query = buildDiscoveryQuery(target.providerKey, options.days);
+  const query = buildDiscoveryQuery(target.providerKey, options.days, options.extraQuery ?? "");
   const connection = shortConnectionRef(target.connectionId);
   let tokenRefreshed = false;
 
@@ -162,6 +167,8 @@ export async function runGmailDiscovery(
     days: clamp(options.days, DEFAULT_DISCOVERY_DAYS, 1, DISCOVERY_DAYS_CEILING),
     maxResults: clamp(options.maxResults, DEFAULT_DISCOVERY_MAX_RESULTS, 1, DISCOVERY_MAX_RESULTS_CEILING),
     includeSpamTrash: options.includeSpamTrash ?? false,
+    providerKey: options.providerKey || null,
+    extraQuery: sanitizeExtraQuery(options.extraQuery) || null,
   };
 
   const [cards, assignments, connections] = await Promise.all([
@@ -169,7 +176,11 @@ export async function runGmailDiscovery(
     listGmailAssignments(),
     listGmailConnections(),
   ]);
-  const { targets, ...plan } = planDiscoveryTargets({ cards, assignments, connections });
+  const { targets: allTargets, ...plan } = planDiscoveryTargets({ cards, assignments, connections });
+  // 1 社だけの再探索（追加条件で絞り込むとき）。割り当てに無い会社は何もしない
+  const targets = resolved.providerKey
+    ? allTargets.filter((t) => t.providerKey === resolved.providerKey)
+    : allTargets;
 
   const results: DiscoveryTargetResult[] = [];
   for (const target of targets) {
@@ -178,7 +189,11 @@ export async function runGmailDiscovery(
 
   return {
     generatedAt: new Date().toISOString(),
-    ...resolved,
+    days: resolved.days,
+    maxResults: resolved.maxResults,
+    includeSpamTrash: resolved.includeSpamTrash,
+    providerKey: resolved.providerKey,
+    extraQuery: resolved.extraQuery,
     plan,
     results,
   };

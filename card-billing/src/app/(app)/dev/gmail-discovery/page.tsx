@@ -83,7 +83,13 @@ export default async function GmailDiscoveryPage() {
           ) : null}
         </SectionCard>
 
-        <DiscoveryRunner action={runGmailDiscoveryAction} />
+        <DiscoveryRunner
+          action={runGmailDiscoveryAction}
+          providers={[...new Set(plan.targets.map((t) => t.providerKey))].map((key) => ({
+            key,
+            label: providerLabel(key),
+          }))}
+        />
 
         <p className="px-1 text-xs leading-relaxed text-muted">
           取得するのは各メールの From / Subject / Date / Message-ID だけです。本文・snippet・添付は

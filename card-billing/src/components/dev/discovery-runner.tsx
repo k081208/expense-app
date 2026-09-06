@@ -135,14 +135,46 @@ function TargetResult({ result }: { result: DiscoveryTargetResult }) {
 
 export function DiscoveryRunner({
   action,
+  providers,
 }: {
   action: (state: DiscoveryActionState, formData: FormData) => Promise<DiscoveryActionState>;
+  /** 探索できるカード会社（割り当てのある単位から作る） */
+  providers: { key: string; label: string }[];
 }) {
   const [state, formAction] = useActionState(action, { status: "idle" });
 
   return (
     <div className="space-y-4">
       <form action={formAction} className="space-y-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium">対象</span>
+          <select
+            name="provider"
+            defaultValue=""
+            className="min-h-[48px] w-full rounded-xl border border-border bg-surface px-3 text-base"
+          >
+            <option value="">すべてのカード会社</option>
+            {providers.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.label} だけ
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium">検索条件の追加（任意）</span>
+          <input
+            type="text"
+            name="extraQuery"
+            maxLength={200}
+            placeholder="例: from:example.co.jp"
+            autoComplete="off"
+            className="min-h-[48px] w-full rounded-xl border border-border bg-surface px-3 font-mono text-sm"
+          />
+          <span className="mt-1 block text-xs text-muted">
+            探索結果で見つかった送信元で絞り込むときに使います。Gmail の検索演算子をそのまま書けます。
+          </span>
+        </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">
             <span className="mb-1 block font-medium">期間（日）</span>
@@ -188,6 +220,8 @@ export function DiscoveryRunner({
             実行 {formatDateTime(state.report.generatedAt)} ／ 過去 {state.report.days} 日 ／
             上限 {state.report.maxResults} 件 ／ 迷惑メール・ゴミ箱{" "}
             {state.report.includeSpamTrash ? "含む" : "除外"}
+            {state.report.providerKey ? ` ／ 対象 ${providerLabel(state.report.providerKey)} のみ` : ""}
+            {state.report.extraQuery ? ` ／ 追加条件 ${state.report.extraQuery}` : ""}
           </p>
           {state.report.results.length === 0 ? (
             <Alert tone="info">探索できる単位がありません。カードに Gmail を割り当ててください。</Alert>

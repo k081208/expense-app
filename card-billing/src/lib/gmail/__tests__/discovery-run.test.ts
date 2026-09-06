@@ -161,6 +161,32 @@ describe("runGmailDiscovery", () => {
     expect(rakuten.fetchErrors).toEqual([{ category: "not_found", count: 1 }]);
   });
 
+  it("query には -from:me が入る（自分が送ったメールを候補にしない）", async () => {
+    await runGmailDiscovery(USER);
+    for (const [args] of listGmailMessages.mock.calls) expect(args.query).toContain("-from:me");
+  });
+
+  it("providerKey を指定すると、その会社の単位だけを探索する", async () => {
+    const report = await runGmailDiscovery(USER, { providerKey: "jcb" });
+    expect(listGmailMessages).toHaveBeenCalledTimes(1);
+    expect(listGmailMessages.mock.calls[0][0]).toMatchObject({ connectionId: "conn-b" });
+    expect(report.providerKey).toBe("jcb");
+    expect(report.results.map((r) => r.providerKey)).toEqual(["jcb"]);
+  });
+
+  it("割り当てに無い会社を providerKey に指定しても何も呼ばない", async () => {
+    const report = await runGmailDiscovery(USER, { providerKey: "amex" });
+    expect(listGmailMessages).not.toHaveBeenCalled();
+    expect(report.results).toEqual([]);
+  });
+
+  it("extraQuery は整えたうえで検索条件の末尾に付き、結果にも記録される", async () => {
+    const report = await runGmailDiscovery(USER, { providerKey: "rakuten", extraQuery: " from:example.co.jp\n" });
+    expect(listGmailMessages.mock.calls[0][0].query).toMatch(/ -from:me from:example\.co\.jp$/);
+    expect(report.extraQuery).toBe("from:example.co.jp");
+    expect(report.results[0].query).toContain("from:example.co.jp");
+  });
+
   it("探索できる単位が無ければ Gmail API を一切呼ばない", async () => {
     listGmailAssignments.mockResolvedValue([]);
     const report = await runGmailDiscovery(USER);

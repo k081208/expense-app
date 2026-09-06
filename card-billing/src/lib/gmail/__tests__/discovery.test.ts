@@ -8,6 +8,7 @@ import {
   maskEmail,
   parseFromHeader,
   planDiscoveryTargets,
+  sanitizeExtraQuery,
   sanitizeSubject,
 } from "../discovery";
 
@@ -183,12 +184,19 @@ describe("planDiscoveryTargets", () => {
 });
 
 describe("buildDiscoveryQuery", () => {
-  it("探索語を OR で結び、newer_than で期間を絞る", () => {
-    expect(buildDiscoveryQuery("rakuten", 365)).toBe("(楽天カード OR 楽天) newer_than:365d");
+  it("探索語を OR で結び、newer_than で期間を絞り、自分が送ったメールを除く", () => {
+    expect(buildDiscoveryQuery("rakuten", 365)).toBe("(楽天カード OR 楽天) newer_than:365d -from:me");
   });
   it("空白を含む語は引用符で囲む", () => {
-    expect(buildDiscoveryQuery("aupay", 90)).toBe('("au PAY" OR auPAY) newer_than:90d');
+    expect(buildDiscoveryQuery("aupay", 90)).toMatch(/^\("au PAY" OR auPAY OR "au PAY カード" OR auフィナンシャルサービス OR "au WALLET" OR KDDI\) newer_than:90d -from:me$/);
     expect(buildDiscoveryQuery("amex", 30)).toContain('"American Express"');
+    expect(buildDiscoveryQuery("edion", 30)).toContain("オリコ");
+  });
+  it("追加条件は 1 行に整えて末尾に付ける", () => {
+    expect(buildDiscoveryQuery("jcb", 365, "  from:example.co.jp \n subject:明細 ")).toBe(
+      "(JCB) newer_than:365d -from:me from:example.co.jp subject:明細",
+    );
+    expect(buildDiscoveryQuery("jcb", 365, "")).toBe("(JCB) newer_than:365d -from:me");
   });
   it("期間は 1〜3650 日に丸める", () => {
     expect(buildDiscoveryQuery("jcb", 0)).toContain("newer_than:1d");
@@ -201,6 +209,15 @@ describe("buildDiscoveryQuery", () => {
     }
     expect(isDiscoverableProvider("smbc")).toBe(false);
     expect(isDiscoverableProvider("other")).toBe(false);
+  });
+});
+
+describe("sanitizeExtraQuery", () => {
+  it("制御文字・改行を空白にし、前後の空白を落とし、200 文字で切る", () => {
+    expect(sanitizeExtraQuery("a\u0000b\nc")).toBe("a b c");
+    expect(sanitizeExtraQuery("   ")).toBe("");
+    expect(sanitizeExtraQuery(null)).toBe("");
+    expect(sanitizeExtraQuery("x".repeat(500))).toHaveLength(200);
   });
 });
 

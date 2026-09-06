@@ -73,8 +73,25 @@ describe("runGmailDiscoveryAction（Server Action 側のガード）", () => {
     const state = await runGmailDiscoveryAction({ status: "idle" }, form);
     expect(state.status).toBe("done");
     expect(runGmailDiscovery).toHaveBeenCalledWith("user-a", {
-      days: 365, maxResults: 50, includeSpamTrash: false,
+      days: 365, maxResults: 50, includeSpamTrash: false, providerKey: null, extraQuery: "",
     });
+  });
+
+  it("対象の会社と追加条件をフォームから受け取る（未知の会社は「すべて」扱い）", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("ENABLE_GMAIL_DISCOVERY", "1");
+    const f = new FormData();
+    f.set("days", "90"); f.set("maxResults", "200");
+    f.set("provider", "jcb"); f.set("extraQuery", "from:example.co.jp");
+    await runGmailDiscoveryAction({ status: "idle" }, f);
+    expect(runGmailDiscovery).toHaveBeenLastCalledWith("user-a", {
+      days: 90, maxResults: 200, includeSpamTrash: false, providerKey: "jcb", extraQuery: "from:example.co.jp",
+    });
+
+    const g = new FormData();
+    g.set("provider", "not-a-provider");
+    await runGmailDiscoveryAction({ status: "idle" }, g);
+    expect(runGmailDiscovery).toHaveBeenLastCalledWith("user-a", expect.objectContaining({ providerKey: null }));
   });
 
   it("探索が例外を投げても、画面には失敗の事実だけを返す", async () => {
