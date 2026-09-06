@@ -5,7 +5,7 @@ import type { BillingProvider } from "./types";
  * Provider の登録簿。
  *
  * 新しいカード会社に対応するときは
- *   1. `providers/api/<name>.ts` または `providers/email/<name>.ts` を追加し
+ *   1. `providers/api/<name>.ts` を追加し（Gmail の Parser は `providers/gmail/registry.ts` に登録する）
  *   2. ここの `PROVIDERS` に 1 行追加する
  * だけでよい。既存コードの変更は不要。
  *

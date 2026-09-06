@@ -273,3 +273,76 @@ export async function getGmailMessageMetadata(params: {
     tokenRefreshed,
   };
 }
+
+// -----------------------------------------------------------------------------
+// STEP 8B: 本文つきの取得（正式な検索条件に一致した少数のメールにだけ使う）
+// -----------------------------------------------------------------------------
+
+/** Gmail の MIME パート（必要な項目だけ）。`src/providers/gmail/mime.ts` が読む。 */
+export type GmailMessagePart = {
+  mimeType?: string;
+  filename?: string;
+  headers?: { name?: string; value?: string }[];
+  body?: { size?: number; data?: string; attachmentId?: string };
+  parts?: GmailMessagePart[];
+};
+
+export type GmailMessageFull = {
+  id: string;
+  threadId: string;
+  internalDate: string | null;
+  labelIds: string[];
+  /** From / Subject / Date だけ（小文字キー）。To / Cc は捨てる */
+  headers: Record<string, string>;
+  /** 本文を含む MIME 構造。呼び出し側は解析にだけ使い、保存・ログ出力しない */
+  payload: GmailMessagePart | null;
+  tokenRefreshed: boolean;
+};
+
+const FULL_HEADER_ALLOWLIST = new Set(["from", "subject", "date"]);
+
+/**
+ * users.messages.get（format=full）
+ *
+ * - 探索（Discovery）では使わない。Parser の正式条件に一致したメールにだけ使う
+ * - snippet は捨てる。ヘッダーは From / Subject / Date 以外を捨てる
+ * - 返した payload は Parser がテキストを取り出したら破棄する
+ */
+export async function getGmailMessageFull(params: {
+  userId: string;
+  connectionId: string;
+  messageId: string;
+}): Promise<GmailMessageFull> {
+  const { json, tokenRefreshed } = await gmailFetch({
+    userId: params.userId,
+    connectionId: params.connectionId,
+    path: `/messages/${encodeURIComponent(params.messageId)}`,
+    searchParams: new URLSearchParams({ format: "full" }),
+  });
+
+  const body = (json ?? {}) as {
+    id?: string;
+    threadId?: string;
+    internalDate?: string;
+    labelIds?: string[];
+    payload?: GmailMessagePart;
+  };
+
+  const headers: Record<string, string> = {};
+  for (const h of body.payload?.headers ?? []) {
+    const key = (h.name ?? "").toLowerCase();
+    if (FULL_HEADER_ALLOWLIST.has(key) && typeof h.value === "string" && !(key in headers)) {
+      headers[key] = h.value;
+    }
+  }
+
+  return {
+    id: body.id ?? params.messageId,
+    threadId: body.threadId ?? "",
+    internalDate: body.internalDate ?? null,
+    labelIds: body.labelIds ?? [],
+    headers,
+    payload: body.payload ?? null,
+    tokenRefreshed,
+  };
+}

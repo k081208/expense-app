@@ -29,7 +29,8 @@ card-billing/
 │   │   ├── (auth)/login/     ログイン画面（公開）
 │   │   ├── (app)/            ログイン必須エリア
 │   │   │   ├── settings/connections/  Gmail 連携の設定 (STEP 7)
-│   │   │   └── dev/gmail-discovery/   請求メールの探索（開発専用・STEP 8A）
+│   │   │   ├── dev/gmail-discovery/   請求メールの探索（開発専用・STEP 8A）
+│   │   │   └── dev/gmail-parser/      請求メール Parser のプレビュー（開発専用・STEP 8B）
 │   │   ├── auth/callback/    ログインのコールバック（STEP 3）
 │   │   └── api/integrations/gmail/callback/
 │   │                         Gmail 連携のコールバック（STEP 7・ログインとは別）
@@ -45,6 +46,7 @@ card-billing/
 │   │   ├── auth/             ログイン・ログアウト・遷移先の検証
 │   │   ├── gmail/            Gmail 連携の OAuth・連携の保存・トークン更新 (STEP 7)
 │   │   │                     Gmail API クライアント・請求メールの探索 (STEP 8A)
+│   │   │                     Parser の実行（正式条件で検索 → 本文取得 → 解析）(STEP 8B)
 │   │   ├── supabase/         Supabase クライアント (client / server / admin / proxy)
 │   │   ├── env.ts            環境変数の読み取り
 │   │   ├── format.ts         金額・日付の表示フォーマット
@@ -265,6 +267,44 @@ http://localhost:3000/dev/gmail-discovery を開き「探索を実行」を押�
 > ここで使う探索語は「候補を見つける」ためのものです。送信元アドレスや件名を推測して
 > 決め打ちしたものではなく、正式な取得条件としてそのまま採用することもしません。
 
+### 請求メールの解析 Parser（STEP 8B）
+
+探索で確認した**送信元と件名**だけで絞ったメールの本文から、請求金額・支払日・対象カードを
+読み取ります。解析の規則は `src/providers/gmail/parsers/`（1 社 1 ファイル）にあり、
+`gmailParserRegistry.get(providerKey)` で引けます。
+
+| 会社 | 対応 | 根拠 |
+| --- | --- | --- |
+| 楽天カード / JACCS / PayPay カード / アメリカン・エキスプレス / JCB | 正式対応 | 実メールで送信元・件名の形を確認済み。本文の形は実環境での確認結果に合わせて調整する |
+| エディオンカード（オリコ） | 未対応（`insufficient_real_samples`） | 請求金額の案内に当たる件名を本文で確認できていない |
+| イオンカード / セゾンカード | 未対応（`limited_sample`） | 実メールが 1 通しか無く、形が安定しているか判断できない |
+| au PAY カード | 未対応（`waiting_for_real_sample`） | 通知先を Gmail に変更したばかりで、まだ 1 通も届いていない |
+
+解析の流れ（どこで止まっても例外にせず、分類コードを返す）:
+
+1. **送信元**: From のアドレスが規則の送信元と**完全一致**するときだけ通す（似たドメインは通さない）
+2. **件名**: 確定 / 予定 / 引き落とし案内 / 変更 に分類。当てはまらないメールは対象外
+3. **本文**: MIME を再帰的にたどり `text/plain` を優先。無ければ `text/html` を文字列処理でテキスト化（描画も実行もしない）
+4. **カード**: 本文の下 4 桁で決める（表示名は使わない）。同じ会社のカードが複数あるときは全カードに下 4 桁の登録が必要
+5. **金額**: 「ご請求金額」などのラベルの直後だけを見る。本文で最初に出てくる円は取らない。0 円も正常な金額
+6. **支払日**: 「お支払い日」などのラベルの直後。年が無ければ受信日時から補い、存在しない日付は失敗にする
+
+開発中はプレビュー画面で結果を確認できます（探索と同じフラグ。本番では 404）:
+
+```
+ENABLE_GMAIL_DISCOVERY=1   # .env.local に追加してから npm run dev
+```
+
+http://localhost:3000/dev/gmail-parser を開き「解析を実行」を押します。
+
+| 項目 | 内容 |
+| --- | --- |
+| 検索 | 正式条件だけで絞る: `from:(送信元) subject:("件名の語" OR …) newer_than:120d -from:me`。既定は過去 120 日・1 単位 20 件まで（上限 365 日・50 件） |
+| 取得 | 一致した少数のメールだけ `messages.get` の `format=full` で本文を取る。snippet と To/Cc は捨てる |
+| 表示 | 会社名・カード表示名・伏字の下 4 桁・金額・支払日・確定/暫定・受信日時・解析状態・分類。本文・件名・message ID は表示しない。「抽出過程」は数字をマスクした行の形だけ |
+| 保存 | 結果は DB に保存しない（`billing_records` への保存は STEP 10） |
+| ログ | 会社名・連携の短縮ハッシュ・件数・分類だけ。本文は出さない |
+
 ## データベース
 
 マイグレーションは `supabase/migrations/` にあります。適用方法・テーブル構成・
@@ -276,7 +316,8 @@ RLS とセキュリティ要件はローカルの PostgreSQL 15 以上に対し�
 npm run db:test
 ```
 
-Gmail API クライアントと請求メールの探索の単体テスト（Google にも Supabase にも接続しません）:
+Gmail API クライアント・請求メールの探索・Parser の単体テスト（Google にも Supabase にも接続しません。
+テストの本文はすべて架空のもの）:
 
 ```bash
 npm test
@@ -341,6 +382,6 @@ ALLOW_BILLING_SEED=1 npm run billing:seed:clean -- --email あなたのメール
 - [x] STEP 6 ダミーデータによる請求表示
 - [x] STEP 7 Gmail 連携（複数アカウント対応）
 - [x] STEP 8A 請求メールの探索（送信元・件名パターンの特定）
-- [ ] STEP 8B メール解析 Provider
+- [x] STEP 8B 請求メールの解析 Parser（楽天 / JACCS / PayPay / AMEX / JCB）
 - [ ] STEP 9 API Provider
 - [ ] STEP 10 自動更新・手動更新

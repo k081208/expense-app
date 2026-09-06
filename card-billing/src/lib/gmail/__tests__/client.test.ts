@@ -20,6 +20,7 @@ import {
   categorizeGmailStatus,
   getGmailMessageMetadata,
   listGmailMessages,
+  getGmailMessageFull,
 } from "../client";
 
 const USER = "user-1";
@@ -249,6 +250,65 @@ describe("getGmailMessageMetadata", () => {
     await expect(
       getGmailMessageMetadata({ userId: USER, connectionId: CONN, messageId: "gone" }),
     ).rejects.toMatchObject({ category: "not_found", status: 404 });
+  });
+});
+
+describe("getGmailMessageFull（STEP 8B・本文つき）", () => {
+  it("format=full を要求し、ヘッダーは From / Subject / Date だけ残し、snippet を捨てる", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        id: "m1",
+        threadId: "t1",
+        internalDate: "1757000000000",
+        labelIds: ["INBOX"],
+        snippet: "ご利用金額 12,345円 …（これは表示してはいけない）",
+        payload: {
+          mimeType: "multipart/alternative",
+          headers: [
+            { name: "From", value: "\"Card Co\" <info@example.test>" },
+            { name: "Subject", value: "ご請求金額のご案内" },
+            { name: "Date", value: "Mon, 01 Sep 2026 10:00:00 +0900" },
+            { name: "Message-ID", value: "<abc@example.test>" },
+            { name: "To", value: "someone@example.test" },
+          ],
+          parts: [{ mimeType: "text/plain", body: { size: 4, data: "dGVzdA" } }],
+        },
+      }),
+    );
+
+    const full = await getGmailMessageFull({ userId: USER, connectionId: CONN, messageId: "m1" });
+
+    const { url, init } = lastRequest();
+    expect(url.pathname).toBe("/gmail/v1/users/me/messages/m1");
+    expect(url.searchParams.get("format")).toBe("full");
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer test-access-token");
+
+    expect(full.headers).toEqual({
+      from: "\"Card Co\" <info@example.test>",
+      subject: "ご請求金額のご案内",
+      date: "Mon, 01 Sep 2026 10:00:00 +0900",
+    });
+    expect(full.headers).not.toHaveProperty("to");
+    expect(full.headers).not.toHaveProperty("message-id");
+    expect(full).not.toHaveProperty("snippet");
+    expect(full.payload?.parts?.[0].body?.data).toBe("dGVzdA");
+    expect(full.internalDate).toBe("1757000000000");
+    expect(full.tokenRefreshed).toBe(false);
+  });
+
+  it("必ず getValidGoogleAccessToken を通す（別のトークン取得経路を持たない）", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { id: "m1", threadId: "t1" }));
+    await getGmailMessageFull({ userId: USER, connectionId: CONN, messageId: "m1" });
+    expect(getValidGoogleAccessToken).toHaveBeenCalledWith({ userId: USER, connectionId: CONN });
+  });
+
+  it("失敗時は分類だけを持つ GmailApiError になる（本文は持ち回らない）", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(404, { error: { code: 404, message: "Requested entity was not found. token=SECRET" } }));
+    await expect(getGmailMessageFull({ userId: USER, connectionId: CONN, messageId: "gone" })).rejects.toMatchObject({
+      name: "GmailApiError",
+      category: "not_found",
+      status: 404,
+    });
   });
 });
 
