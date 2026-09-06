@@ -206,8 +206,8 @@ describe("buildDiscoveryQuery", () => {
 
 describe("maskEmail", () => {
   it("先頭 2 文字とドメインだけを残す", () => {
-    expect(maskEmail("sky.haru@example.test")).toBe("sk***@example.test");
-    expect(maskEmail("reino@example.test")).toBe("re***@example.test");
+    expect(maskEmail("skylark.demo@example.test")).toBe("sk***@example.test");
+    expect(maskEmail("relay@example.test")).toBe("re***@example.test");
   });
   it("短いローカル部・不正な値・null", () => {
     expect(maskEmail("a@example.test")).toBe("a***@example.test");
