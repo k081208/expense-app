@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptToken } from "@/lib/crypto";
 import { logger } from "@/lib/logger";
@@ -27,8 +28,18 @@ import { ACCESS_TOKEN_REFRESH_MARGIN_SECONDS } from "./config";
  * 呼び出し側は必ず認証済みユーザーの id を渡すこと（他人の連携を扱わせない）。
  */
 
+/** ログ用の短い参照。連携 ID そのものは出さない。 */
+export function shortConnectionRef(connectionId: string): string {
+  return createHash("sha256").update(connectionId).digest("hex").slice(0, 8);
+}
+
 export type AccessTokenResult =
-  | { ok: true; accessToken: string }
+  | {
+      ok: true;
+      accessToken: string;
+      /** この呼び出しでリフレッシュトークンによる更新を行ったか。 */
+      refreshed: boolean;
+    }
   | { ok: false; code: "not_connected" | "token_expired" | "upstream_error" };
 
 export async function getValidGoogleAccessToken(params: {
@@ -68,7 +79,11 @@ export async function getValidGoogleAccessToken(params: {
 
   if (expiresAt - margin > now.getTime()) {
     try {
-      return { ok: true, accessToken: decryptToken(stored.access_token_encrypted) };
+      return {
+        ok: true,
+        accessToken: decryptToken(stored.access_token_encrypted),
+        refreshed: false,
+      };
     } catch {
       logger.warn("保存済みアクセストークンを復号できませんでした");
       // 復号できない場合は更新に回す
@@ -113,7 +128,12 @@ export async function getValidGoogleAccessToken(params: {
       errorCode: null,
     });
 
-    return { ok: true, accessToken: refreshed.accessToken };
+    // トークンそのものは出さない。更新が起きた事実だけを残す。
+    logger.info("Google アクセストークンを更新しました", {
+      connection: shortConnectionRef(params.connectionId),
+    });
+
+    return { ok: true, accessToken: refreshed.accessToken, refreshed: true };
   } catch (e) {
     const code = e instanceof GoogleOAuthError ? e.code : "unknown";
 

@@ -9,8 +9,19 @@
  *   - 本番のデータベースに対しては実行しないでください。
  *
  * 使い方:
- *   ALLOW_BILLING_SEED=1 npm run billing:seed       -- --email you@example.com
- *   ALLOW_BILLING_SEED=1 npm run billing:seed:clean -- --email you@example.com
+ *   ALLOW_BILLING_SEED=1 npm run billing:seed               -- --email you@example.com
+ *   ALLOW_BILLING_SEED=1 npm run billing:seed:clean         -- --email you@example.com
+ *   ALLOW_BILLING_SEED=1 npm run billing:seed:clean-records -- --email you@example.com
+ *
+ *   --clean          テストカード 11 枚と、その請求情報をすべて削除する
+ *   --clean-records-only
+ *                    このスクリプトが投入した「請求情報だけ」を削除する。
+ *                    カード・Gmail 連携・カードごとの割り当ては残す。
+ *                    実運用のカードとしてテストカードを使い続ける場合はこちら。
+ *   --dry-run        削除せずに、対象になる行だけを表示する（--clean-records-only 用）
+ *   --as-of YYYY-MM-DD
+ *                    投入したときの日付を指定する。支払日は実行日から計算するため、
+ *                    投入日と別の日に削除する場合はこれで合わせる。
  *
  * 投入するのは、実際にご利用中の 11 枚の構成に合わせた「架空の」カードと請求です。
  * カード番号の下 4 桁・金額・支払日はすべてテスト用の作り値で、実在の値ではありません。
@@ -60,6 +71,10 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
 
 const args = process.argv.slice(2);
 const clean = args.includes("--clean");
+const cleanRecordsOnly = args.includes("--clean-records-only");
+const dryRun = args.includes("--dry-run");
+const asOf = args.includes("--as-of") ? args[args.indexOf("--as-of") + 1] : null;
+if (asOf && !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) abort("--as-of は YYYY-MM-DD で指定してください。");
 const email = args[args.indexOf("--email") + 1];
 const userIdArg = args[args.indexOf("--user") + 1];
 if (!args.includes("--email") && !args.includes("--user")) {
@@ -69,7 +84,7 @@ if (!args.includes("--email") && !args.includes("--user")) {
 // ---------------------------------------------------------------------------
 // 日付（すべて実行時に計算する。いつ実行しても「次回」が未来になるように）
 // ---------------------------------------------------------------------------
-const jstToday = new Intl.DateTimeFormat("en-CA", {
+const jstToday = asOf ?? new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
 }).format(new Date());
 const [ty, tm, td] = jstToday.split("-").map(Number);
@@ -217,10 +232,109 @@ const userId = await resolveUserId();
 console.log("");
 console.log("  対象データベース :", SUPABASE_URL);
 console.log("  対象ユーザー     :", userId);
-console.log("  操作             :", clean ? "テストデータの削除" : "テストデータの投入");
+console.log(
+  "  操作             :",
+  clean ? "テストデータの削除（カードごと）"
+    : cleanRecordsOnly ? (dryRun ? "テスト請求情報の削除（確認のみ・削除しない）" : "テスト請求情報だけの削除")
+    : "テストデータの投入",
+);
+if (asOf) console.log("  投入日として計算 :", asOf);
 console.log("");
 
 const cardIds = FIXTURE.map((c) => stableUuid(userId, "card", c.slug));
+
+/**
+ * 利用者の各テーブルの件数（削除前後の確認用）。
+ * Gmail 連携とカードごとの割り当てが減っていないことをここで見る。
+ */
+async function countAll() {
+  const count = async (table, filter) => {
+    let q = supabase.from(table).select("id", { count: "exact", head: true }).eq("user_id", userId);
+    if (filter) q = filter(q);
+    const { count: n, error } = await q;
+    if (error) abort(`${table} の件数を取得できませんでした: ${error.message}`);
+    return n ?? 0;
+  };
+  return {
+    cards: await count("cards"),
+    assignments: await count("card_connection_assignments"),
+    gmailConnections: await count("connections", (q) => q.eq("kind", "gmail")),
+    billingRecords: await count("billing_records"),
+  };
+}
+
+function printCounts(label, c) {
+  console.log(`  ${label}`);
+  console.log(`    cards                       : ${c.cards}`);
+  console.log(`    card_connection_assignments : ${c.assignments}`);
+  console.log(`    Gmail connections           : ${c.gmailConnections}`);
+  console.log(`    billing_records             : ${c.billingRecords}`);
+}
+
+if (cleanRecordsOnly) {
+  // このスクリプトが投入した請求情報「だけ」を消す。
+  //
+  // 単純な delete from billing_records は使わない。FIXTURE の定義から
+  //   カード ID（決まった値）× 取得元 × 支払日 × 金額 × 状態 × エラーコード × 暫定フラグ
+  // がすべて一致する行だけを対象にする。実データがこの組み合わせに偶然一致する
+  // 可能性は事実上無く、将来うっかり実行しても実際の請求情報は消えない。
+  // 支払日は投入日から計算されるため、日が変わった場合は --as-of で合わせる。
+  const before = await countAll();
+  printCounts("削除前", before);
+  console.log("");
+
+  let matched = 0;
+  let deleted = 0;
+  for (const [i, c] of FIXTURE.entries()) {
+    for (const b of c.billings) {
+      let q = supabase
+        .from("billing_records")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("card_id", cardIds[i])
+        .eq("source", b.source)
+        .eq("status", b.status)
+        .eq("is_provisional", b.provisional ?? false);
+      q = b.date === null ? q.is("payment_date", null) : q.eq("payment_date", b.date);
+      q = b.amount === null ? q.is("amount", null) : q.eq("amount", b.amount);
+      q = b.errorCode ? q.eq("error_code", b.errorCode) : q.is("error_code", null);
+
+      const { data: rows, error } = await q;
+      if (error) abort(`対象の確認に失敗しました: ${error.message}`);
+      const ids = (rows ?? []).map((r) => r.id);
+      matched += ids.length;
+
+      const label = `${c.name.padEnd(10)} ${b.source.padEnd(5)} ${(b.date ?? "支払日なし").padEnd(10)}`;
+      if (ids.length === 0) {
+        console.log(`    - ${label} 見つかりません（削除済み、または投入日が違う → --as-of）`);
+        continue;
+      }
+      if (dryRun) {
+        console.log(`    * ${label} ${ids.length} 件（削除対象）`);
+        continue;
+      }
+      const { error: delError } = await supabase.from("billing_records").delete().in("id", ids);
+      if (delError) abort(`削除に失敗しました: ${delError.message}`);
+      deleted += ids.length;
+      console.log(`    x ${label} ${ids.length} 件を削除`);
+    }
+  }
+
+  console.log("");
+  console.log(dryRun
+    ? `  削除対象 ${matched} 件（--dry-run のため削除していません）`
+    : `  テスト請求情報 ${deleted} 件を削除しました。カード・連携・割り当ては変更していません。`);
+  console.log("");
+  const after = await countAll();
+  printCounts("削除後", after);
+  console.log("");
+  if (!dryRun && after.billingRecords > 0) {
+    console.log("  ※ billing_records がまだ残っています。このスクリプトが投入したもの以外は消しません。");
+    console.log("    投入日と違う日に実行した場合は --as-of YYYY-MM-DD を付けて再実行してください。");
+    console.log("");
+  }
+  process.exit(0);
+}
 
 if (clean) {
   // カードを消せば請求情報は外部キーの CASCADE で一緒に消える
@@ -277,5 +391,5 @@ for (const [key, value] of Object.entries(D)) {
   console.log(`    ${key.padEnd(7)} ${value}`);
 }
 console.log("");
-console.log("  削除するには --clean を付けて実行してください。");
+console.log("  請求情報だけを消すには --clean-records-only、カードごと消すには --clean を付けて実行してください。");
 console.log("");

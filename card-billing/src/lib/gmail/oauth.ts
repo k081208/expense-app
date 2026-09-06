@@ -61,8 +61,11 @@ export function buildAuthorizationUrl(params: {
   // あわせて同意も取り直すことで、リフレッシュトークンが返らない事態を避ける。
   url.searchParams.set("prompt", "select_account consent");
 
-  // 既に与えた権限を引き継ぐ（不要な権限を新たに要求することはしない）
-  url.searchParams.set("include_granted_scopes", "true");
+  // include_granted_scopes は付けない（既定の false）。
+  // これは「後から権限を追加していく」ための仕組み（incremental authorization）で、
+  // 付けると同じ Google Cloud プロジェクトで別の目的（ログイン）に許可された
+  // profile などの権限までトークンに合算される。この連携は openid / email /
+  // gmail.readonly の 3 つに固定する用途なので、要求したものだけを受け取る。
 
   url.searchParams.set("code_challenge", params.codeChallenge);
   url.searchParams.set("code_challenge_method", "S256");

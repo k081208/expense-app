@@ -28,7 +28,8 @@ card-billing/
 │   │   ├── manifest.ts       PWA マニフェスト
 │   │   ├── (auth)/login/     ログイン画面（公開）
 │   │   ├── (app)/            ログイン必須エリア
-│   │   │   └── settings/connections/  Gmail 連携の設定 (STEP 7)
+│   │   │   ├── settings/connections/  Gmail 連携の設定 (STEP 7)
+│   │   │   └── dev/gmail-discovery/   請求メールの探索（開発専用・STEP 8A）
 │   │   ├── auth/callback/    ログインのコールバック（STEP 3）
 │   │   └── api/integrations/gmail/callback/
 │   │                         Gmail 連携のコールバック（STEP 7・ログインとは別）
@@ -43,6 +44,7 @@ card-billing/
 │   ├── lib/
 │   │   ├── auth/             ログイン・ログアウト・遷移先の検証
 │   │   ├── gmail/            Gmail 連携の OAuth・連携の保存・トークン更新 (STEP 7)
+│   │   │                     Gmail API クライアント・請求メールの探索 (STEP 8A)
 │   │   ├── supabase/         Supabase クライアント (client / server / admin / proxy)
 │   │   ├── env.ts            環境変数の読み取り
 │   │   ├── format.ts         金額・日付の表示フォーマット
@@ -201,7 +203,7 @@ Supabase Auth の Google プロバイダでログインします。**この設�
 
 | 項目 | 内容 |
 | --- | --- |
-| フロー | 認可コードフロー + PKCE (S256)。`state` と `code_verifier` は HttpOnly Cookie に短時間だけ置く |
+| フロー | 認可コードフロー + PKCE (S256)。`state` と `code_verifier` は HttpOnly Cookie に短時間だけ置く。`include_granted_scopes` は付けない（要求した 3 つのスコープだけを受け取る） |
 | ID トークン | 署名・`iss`・`aud`・`exp` を Google の公開鍵で検証する（Base64 を解いて信用することはしない） |
 | 保存場所 | 非公開スキーマ `private.oauth_credentials`（PostgREST に公開していない） |
 | 暗号化 | AES-256-GCM。鍵は `TOKEN_ENCRYPTION_KEY` のみ。DB にも Git にも鍵は置かない |
@@ -238,6 +240,31 @@ Supabase Auth の Google プロバイダでログインします。**この設�
 公開ステータスを「テスト」のままにして、テストユーザーに自分のアカウントを
 登録して使うのが簡単です。
 
+### 請求メールの探索（開発専用・STEP 8A）
+
+各カード会社から**実際に届いているメール**の送信元と件名の形を調べるための開発機能です。
+STEP 8B でメール解析の正式な条件（送信元・件名）を決めるための材料にします。
+一般の利用者向けの画面ではありません。
+
+```
+ENABLE_GMAIL_DISCOVERY=1   # .env.local に追加してから npm run dev
+```
+
+http://localhost:3000/dev/gmail-discovery を開き「探索を実行」を押します。
+
+| 項目 | 内容 |
+| --- | --- |
+| 有効になる条件 | 開発モード（`NODE_ENV` が production でない）**かつ** `ENABLE_GMAIL_DISCOVERY=1`。本番では 404。Server Action 側にも同じ判定がある |
+| 探索の単位 | カード会社 × Gmail アカウント。どの Gmail で探すかは「カードごとの取得元」の割り当てから決める（コードに書かない）。楽天 2 枚・JCB 2 枚でも検索は 1 回 |
+| 検索 | Gmail API の `q` で絞る（会社名などの広い探索語 ＋ `newer_than:365d`）。既定は過去 365 日・上限 50 件・迷惑メールとゴミ箱は除外。いずれも画面で変更できる |
+| 取得するもの | 各メールの From / Subject / Date / Message-ID だけ（`messages.get` の `format=metadata`）。本文・snippet・添付・To/Cc は取得しない |
+| 表示 | 送信元アドレス別の件数、件名は数字・金額・日付を `[NUMBER]` `[AMOUNT]` `[DATE]` に置き換えたテンプレート別の件数、最新／最古の日時。Gmail アカウントはマスク表示 |
+| 保存 | 結果はどこにも保存しない（DB テーブルも作らない） |
+| トークン | `getValidGoogleAccessToken()` を通す。期限切れなら自動更新され、更新が起きたことが画面に表示される |
+
+> ここで使う探索語は「候補を見つける」ためのものです。送信元アドレスや件名を推測して
+> 決め打ちしたものではなく、正式な取得条件としてそのまま採用することもしません。
+
 ## データベース
 
 マイグレーションは `supabase/migrations/` にあります。適用方法・テーブル構成・
@@ -249,6 +276,12 @@ RLS とセキュリティ要件はローカルの PostgreSQL 15 以上に対し�
 npm run db:test
 ```
 
+Gmail API クライアントと請求メールの探索の単体テスト（Google にも Supabase にも接続しません）:
+
+```bash
+npm test
+```
+
 ### 開発用のテストデータ
 
 表示や集計を確認するための**架空の**カードと請求情報を投入できます。
@@ -258,9 +291,17 @@ npm run db:test
 # 投入（テスト用カード 11 枚と請求情報）
 ALLOW_BILLING_SEED=1 npm run billing:seed       -- --email あなたのメールアドレス
 
-# 削除（投入したものだけを消します）
+# 請求情報だけを削除（カード・Gmail 連携・カードごとの割り当ては残す）
+ALLOW_BILLING_SEED=1 npm run billing:seed:clean-records -- --email あなたのメールアドレス
+
+# カードごと削除（投入したものだけを消します）
 ALLOW_BILLING_SEED=1 npm run billing:seed:clean -- --email あなたのメールアドレス
 ```
+
+`clean-records` は、このスクリプトが投入した請求情報を「カード ID × 取得元 × 支払日 × 金額 × 状態」
+まで一致するものに限って削除します。実際の請求情報が偶然一致することは事実上ありません。
+支払日は投入日から計算されるため、投入日と違う日に削除する場合は `--as-of YYYY-MM-DD`（投入日）を
+付けてください。`--dry-run` を付けると、削除せずに対象だけを表示します。
 
 > **本番のデータベースに対しては実行しないでください。**
 > このスクリプトはアプリ（`src/` 配下）からは読み込まれず、本番ビルドにも含まれません。
@@ -299,6 +340,7 @@ ALLOW_BILLING_SEED=1 npm run billing:seed:clean -- --email あなたのメール
 - [x] STEP 5 カード登録機能
 - [x] STEP 6 ダミーデータによる請求表示
 - [x] STEP 7 Gmail 連携（複数アカウント対応）
-- [ ] STEP 8 メール解析 Provider
+- [x] STEP 8A 請求メールの探索（送信元・件名パターンの特定）
+- [ ] STEP 8B メール解析 Provider
 - [ ] STEP 9 API Provider
 - [ ] STEP 10 自動更新・手動更新
