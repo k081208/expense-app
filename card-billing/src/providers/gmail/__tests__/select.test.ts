@@ -14,6 +14,7 @@ const rec = (over: Partial<ParsedGmailBilling> & { mailClass: GmailMailClass }):
   status: "success",
   errorCode: null,
   sourceReceivedAt: "2026-09-01T00:00:00.000Z",
+  trial: false,
   debug: [],
   ...over,
 });

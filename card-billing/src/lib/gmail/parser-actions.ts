@@ -34,6 +34,7 @@ export async function runGmailParserPreviewAction(
   const maxMessages = Number(formData.get("maxMessages"));
   const providerKey = String(formData.get("provider") ?? "");
   const includeDebug = formData.get("includeDebug") === "on";
+  const includeCandidates = formData.get("includeCandidates") === "on";
 
   try {
     const report = await runGmailParserPreview(user.id, {
@@ -41,6 +42,7 @@ export async function runGmailParserPreviewAction(
       maxMessages: Number.isFinite(maxMessages) ? maxMessages : undefined,
       providerKey: gmailParserRegistry.get(providerKey) ? providerKey : null,
       includeDebug,
+      includeCandidates,
     });
     return { status: "done", report };
   } catch {

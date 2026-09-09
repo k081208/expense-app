@@ -57,7 +57,13 @@ describe("runGmailParserPreviewAction（Server Action 側のガード）", () =>
     f.set("user_id", "someone-else");
     const state = await runGmailParserPreviewAction({ status: "idle" }, f);
     expect(state.status).toBe("done");
-    expect(runGmailParserPreview).toHaveBeenCalledWith("user-a", { days: 90, maxMessages: 10, providerKey: "jcb", includeDebug: true });
+    expect(runGmailParserPreview).toHaveBeenCalledWith("user-a", {
+      days: 90, maxMessages: 10, providerKey: "jcb", includeDebug: true, includeCandidates: false,
+    });
+    const g = new FormData();
+    g.set("includeCandidates", "on");
+    await runGmailParserPreviewAction({ status: "idle" }, g);
+    expect(runGmailParserPreview).toHaveBeenLastCalledWith("user-a", expect.objectContaining({ includeCandidates: true }));
   });
 
   it("未対応・未知の会社を指定しても「すべて」扱い", async () => {

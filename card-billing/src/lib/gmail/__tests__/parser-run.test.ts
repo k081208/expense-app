@@ -43,7 +43,7 @@ vi.mock("../client", async () => {
 vi.mock("../tokens", () => ({ shortConnectionRef: () => "abcd1234" }));
 
 import { GmailApiError } from "../client";
-import { runGmailParserPreview } from "../parser-run";
+import { runGmailParserPreview, toReceivedAtIso } from "../parser-run";
 
 const USER = "user-a";
 const NOW = "2026-09-01T00:00:00Z";
@@ -229,6 +229,38 @@ describe("runGmailParserPreview", () => {
     expect(report.results).toEqual([]);
     expect(listGmailMessages).not.toHaveBeenCalled();
     expect(getGmailMessageFull).not.toHaveBeenCalled();
+  });
+
+  it("未対応の会社は includeCandidates のときだけ「試行」単位になり、採用候補には入らない", async () => {
+    listGmailMessages.mockImplementation(async ({ query }: { query: string }) => {
+      if (query.includes("orico.co.jp")) return { messages: [{ id: "o1", threadId: "t-o1" }], nextPageToken: null, resultSizeEstimate: 1, tokenRefreshed: false };
+      return { messages: [], nextPageToken: null, resultSizeEstimate: 0, tokenRefreshed: false };
+    });
+    getGmailMessageFull.mockImplementation(async ({ messageId }: { messageId: string }) => {
+      if (messageId === "o1") return mail("o1", "<e-ask@orico.co.jp>", "ご利用明細更新のお知らせ", "ご請求金額 1,000円\nお支払い日 2026年9月27日", "1757000000000");
+      throw new GmailApiError("not_found", 404);
+    });
+
+    const without = await runGmailParserPreview(USER, { now: AS_OF });
+    expect(without.results.some((r) => r.providerKey === "edion")).toBe(false);
+    expect(without.plan.unsupportedCards.some((c) => c.providerKey === "edion")).toBe(true);
+
+    const withTrial = await runGmailParserPreview(USER, { now: AS_OF, includeCandidates: true, includeDebug: true });
+    const edion = withTrial.results.find((r) => r.providerKey === "edion")!;
+    expect(edion).toMatchObject({ trial: true, listed: 1, current: [] });
+    expect(edion.query).toMatch(/^from:\(e-ask@orico\.co\.jp OR e-service@orico\.co\.jp\) subject:/);
+    expect(edion.messages[0]).toMatchObject({ status: "success", trial: true, amount: 1000 });
+    expect(withTrial.plan.unsupportedCards.some((c) => c.providerKey === "edion")).toBe(false);
+    // au PAY（実メール待ち）は試行しない
+    expect(withTrial.results.some((r) => r.providerKey === "aupay")).toBe(false);
+    expect(withTrial.plan.unsupportedCards.some((c) => c.providerKey === "aupay")).toBe(true);
+  });
+
+  it("受信日時は Gmail の internalDate を優先し、無いときだけ Date ヘッダーを使う", () => {
+    expect(toReceivedAtIso("1757000000000", "Mon, 01 Sep 2026 10:00:00 +0900")).toBe("2025-09-04T15:33:20.000Z");
+    expect(toReceivedAtIso(null, "Mon, 01 Sep 2026 10:00:00 +0900")).toBe("2026-09-01T01:00:00.000Z");
+    expect(toReceivedAtIso("not-a-number", "Mon, 01 Sep 2026 10:00:00 +0900")).toBe("2026-09-01T01:00:00.000Z");
+    expect(toReceivedAtIso(null, null)).toBe("1970-01-01T00:00:00.000Z");
   });
 
   it("実行部分と Parser は DB へ書き込むコードを持たない（billing_records への保存は STEP 10）", () => {

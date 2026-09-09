@@ -294,12 +294,13 @@ describe("jaccs parser", () => {
 // 未対応（Tier B / C）
 // ---------------------------------------------------------------------------
 describe("unsupported parsers", () => {
-  it("未対応の会社は常に provider_unsupported で、検索条件も作れない", () => {
+  it("未対応の会社は通常の解析では常に provider_unsupported", () => {
     for (const p of [edionGmailParser, aupayGmailParser] as GmailBillingParser[]) {
       expect(p.support.level).toBe("unsupported");
       const r = p.parse(input({ from: "<x@example.test>", subject: "ご請求", bodyText: "ご請求金額 1円" }), [SINGLE]);
       expect(r).toMatchObject({ status: "error", errorCode: "provider_unsupported" });
-      expect(() => p.buildQuery(120)).toThrow();
     }
+    // 実メール待ちの au PAY は観測済み条件も無く、検索条件を作れない
+    expect(() => aupayGmailParser.buildQuery(120)).toThrow();
   });
 });

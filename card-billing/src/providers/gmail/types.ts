@@ -88,6 +88,12 @@ export type GmailProviderRule = {
   dateFromSubject?: boolean;
   /** 既定の検索期間（日）。 */
   lookbackDays?: number;
+  /**
+   * 未対応（support.level = "unsupported"）のまま、開発画面の「未対応の会社も試す」で
+   * 実メール本文の形を確認するための観測済み条件を持つことを示す。
+   * 送信元・件名は探索で観測したものだけ。結果は採用されず、正式対応の根拠にもしない。
+   */
+  trial?: boolean;
 };
 
 /** IO 層が組み立てて Parser に渡す 1 通ぶんの入力。message ID は渡さない。 */
@@ -135,8 +141,10 @@ export type ParsedGmailBilling = {
   isProvisional: boolean;
   status: "success" | "error";
   errorCode: GmailParseErrorCode | null;
-  /** メールの受信日時（ISO 8601）。新旧判定に使う */
+  /** メールの受信日時（ISO 8601）。Gmail の internalDate を優先し、無ければ Date ヘッダー */
   sourceReceivedAt: string;
+  /** 未対応の会社を試行モードで解析した結果（採用しない） */
+  trial: boolean;
   /** マスク済みの抽出過程（開発画面での調整用）。本文そのものは含めない */
   debug: string[];
 };
@@ -149,8 +157,14 @@ export type GmailBillingParser = {
   /** 正式な Gmail 検索条件を組み立てる */
   buildQuery(days: number): string;
   classifySubject(subject: string | null | undefined): GmailMailClass;
-  /** 1 通を解析する。例外は投げない */
-  parse(input: GmailParseInput, cards: readonly GmailCardCandidate[]): ParsedGmailBilling;
+  /** 未対応でも試行モードで解析できるか（観測済みの送信元・件名を持つ） */
+  readonly canTrial: boolean;
+  /** 1 通を解析する。例外は投げない。trial は未対応の会社を開発画面で試すときだけ true */
+  parse(
+    input: GmailParseInput,
+    cards: readonly GmailCardCandidate[],
+    options?: { trial?: boolean },
+  ): ParsedGmailBilling;
 };
 
 /**

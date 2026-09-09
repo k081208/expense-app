@@ -1,5 +1,6 @@
 import { extractAmount } from "./extract/amount";
 import { extractPaymentDate } from "./extract/date";
+import { collectStructureHints, type StructureHintKind } from "./extract/hints";
 import { describeLastFourCandidates, extractLastFourCandidates } from "./extract/last-four";
 import { verifySender } from "./extract/sender";
 import { classifySubject } from "./extract/subject";
@@ -30,7 +31,12 @@ export function createGmailParser(rule: GmailProviderRule): GmailBillingParser {
     rule,
     buildQuery: (days) => buildOfficialGmailQuery(rule, days),
     classifySubject: (subject) => classifySubject(subject, rule.subject),
-    parse: (input, cards) => parseWithRule(rule, input, cards),
+    canTrial:
+      rule.support.level === "unsupported" &&
+      rule.trial === true &&
+      rule.senderAllowlist.length > 0 &&
+      rule.searchSubjects.length > 0,
+    parse: (input, cards, options) => parseWithRule(rule, input, cards, options),
   };
 }
 
@@ -48,6 +54,7 @@ function base(rule: GmailProviderRule, input: GmailParseInput): ParsedGmailBilli
     status: "error",
     errorCode: null,
     sourceReceivedAt: input.receivedAt,
+    trial: false,
     debug: [],
   };
 }
@@ -60,11 +67,15 @@ export function parseWithRule(
   rule: GmailProviderRule,
   input: GmailParseInput,
   cards: readonly GmailCardCandidate[],
+  options: { trial?: boolean } = {},
 ): ParsedGmailBilling {
   const result = base(rule, input);
 
   if (rule.support.level !== "official") {
-    return fail(result, "provider_unsupported");
+    const trialAllowed = options.trial === true && rule.trial === true && rule.senderAllowlist.length > 0;
+    if (!trialAllowed) return fail(result, "provider_unsupported");
+    result.trial = true;
+    result.debug.push("試行モード: 未対応の会社。結果は採用しない");
   }
 
   const sender = verifySender(input.from, rule.senderAllowlist);
@@ -124,6 +135,13 @@ export function parseWithRule(
     result.debug.push(`支払日候補: ラベル${c.labelIndex + 1} 行${c.line + 1} → ${c.date}`);
   }
   if (date.status === "ok") result.paymentDate = date.paymentDate;
+
+  // 失敗したときは、本文の構造（数字をマスクした行）をヒントとして添える
+  const hintKinds: StructureHintKind[] = [];
+  if (match.status === "error") hintKinds.push("card");
+  if (amount.status !== "ok") hintKinds.push("amount");
+  if (date.status !== "ok") hintKinds.push("date");
+  if (hintKinds.length > 0) result.debug.push(...collectStructureHints(text, hintKinds));
 
   // 失敗の優先順位: カード → 金額 → 支払日
   if (match.status === "error") return fail(result, match.code);

@@ -127,7 +127,12 @@ function MessageRow({ m, showDebug }: { m: ParsedGmailBilling; showDebug: boolea
 
 function TargetResult({ result, showDebug }: { result: GmailParserTargetResult; showDebug: boolean }) {
   return (
-    <SectionCard title={providerLabel(result.providerKey)}>
+    <SectionCard title={`${providerLabel(result.providerKey)}${result.trial ? "（試行・未対応）" : ""}`}>
+      {result.trial ? (
+        <p className="mb-2 text-xs text-muted">
+          未対応の会社を観測済みの送信元・件名で試しているだけです。結果は採用候補にならず、正式対応の根拠にもしません。
+        </p>
+      ) : null}
       <dl className="space-y-1 text-sm">
         <div className="flex gap-2">
           <dt className="shrink-0 text-muted">割り当て済み Gmail</dt>
@@ -258,6 +263,10 @@ export function ParserRunner({
           <input type="checkbox" name="includeDebug" className="h-5 w-5" defaultChecked />
           抽出過程を表示する（数字はマスクした行の形だけ。本文は出ません）
         </label>
+        <label className="flex min-h-[44px] items-center gap-2 text-sm">
+          <input type="checkbox" name="includeCandidates" className="h-5 w-5" />
+          未対応の会社（エディオン / イオン / セゾン）も観測済み条件で試す（結果は採用しません）
+        </label>
         <RunButton />
       </form>
 
@@ -275,6 +284,7 @@ export function ParserRunner({
             実行 {formatDateTime(state.report.generatedAt)} ／ 過去 {state.report.days} 日 ／ 1 単位
             {state.report.maxMessages} 件まで
             {state.report.providerKey ? ` ／ 対象 ${providerLabel(state.report.providerKey)} のみ` : ""}
+            {state.report.includeCandidates ? " ／ 未対応の会社も試行" : ""}
           </p>
           {state.report.results.length === 0 ? (
             <Alert tone="info">解析できる単位がありません。正式対応の会社のカードに Gmail を割り当ててください。</Alert>

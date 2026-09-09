@@ -21,6 +21,8 @@ export type GmailParserTarget = {
   accountEmailMasked: string;
   /** この単位に含まれるカード（下 4 桁はカード特定に使う） */
   cards: GmailCardCandidate[];
+  /** 未対応の会社を観測済み条件で試すだけの単位（結果は採用しない） */
+  trial: boolean;
 };
 
 export type GmailParserPlan = {
@@ -31,11 +33,17 @@ export type GmailParserPlan = {
   unsupportedCards: { cardName: string; providerKey: string; reason: GmailUnsupportedReason }[];
 };
 
-export function planParserTargets(input: {
-  cards: CardRow[];
-  assignments: CardConnectionAssignmentRow[];
-  connections: ConnectionRow[];
-}): GmailParserPlan {
+export function planParserTargets(
+  input: {
+    cards: CardRow[];
+    assignments: CardConnectionAssignmentRow[];
+    connections: ConnectionRow[];
+  },
+  options: {
+    /** 未対応でも観測済みの送信元・件名を持つ会社を「試行」単位として含める（開発画面のみ） */
+    includeCandidates?: boolean;
+  } = {},
+): GmailParserPlan {
   const byCard = new Map(input.assignments.map((a) => [a.card_id, a]));
   const byConnection = new Map(input.connections.map((c) => [c.id, c]));
   const targets = new Map<string, GmailParserTarget>();
@@ -52,7 +60,9 @@ export function planParserTargets(input: {
 
   for (const card of cards) {
     const support = gmailParserRegistry.supportOf(card.provider_key);
-    if (support.level !== "official") {
+    const parser = gmailParserRegistry.get(card.provider_key);
+    const trial = support.level !== "official" && options.includeCandidates === true && parser?.canTrial === true;
+    if (support.level !== "official" && !trial) {
       plan.unsupportedCards.push({
         cardName: card.display_name,
         providerKey: card.provider_key,
@@ -88,6 +98,7 @@ export function planParserTargets(input: {
         connectionId: connection.id,
         accountEmailMasked: maskEmail(connection.account_email),
         cards: [candidate],
+        trial,
       });
     }
   }
@@ -105,6 +116,8 @@ export type GmailParserTargetResult = {
   connectionId: string;
   accountEmailMasked: string;
   cardNames: string[];
+  /** 未対応の会社の試行（結果は採用しない） */
+  trial: boolean;
   query: string;
   /** 検索に一致した件数（本文を取った件数） */
   listed: number;
@@ -126,6 +139,7 @@ export type GmailParserReport = {
   maxMessages: number;
   providerKey: string | null;
   includeDebug: boolean;
+  includeCandidates: boolean;
   plan: Omit<GmailParserPlan, "targets">;
   results: GmailParserTargetResult[];
 };

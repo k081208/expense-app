@@ -38,6 +38,8 @@ export type ParserRunOptions = {
   providerKey?: string | null;
   /** マスク済みの抽出過程を結果に含める（開発画面の調整用） */
   includeDebug?: boolean;
+  /** 未対応の会社も観測済み条件で試す（開発画面のみ。結果は採用しない） */
+  includeCandidates?: boolean;
   /** 採用判定の基準日（テスト用） */
   now?: Date;
 };
@@ -59,15 +61,22 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-function toIso(internalDate: string | null): string {
+/**
+ * 受信日時。Gmail 側の internalDate（ミリ秒）を優先し、無いときだけ Date ヘッダーを補助に使う。
+ * どちらも無ければ epoch 0（新旧判定で必ず最も古い扱いになる）。
+ */
+export function toReceivedAtIso(internalDate: string | null, dateHeader: string | null | undefined): string {
   const t = internalDate ? Number(internalDate) : NaN;
-  return Number.isFinite(t) ? new Date(t).toISOString() : new Date(0).toISOString();
+  if (Number.isFinite(t) && t > 0) return new Date(t).toISOString();
+  const parsed = dateHeader ? Date.parse(dateHeader) : NaN;
+  if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  return new Date(0).toISOString();
 }
 
 async function runTarget(
   userId: string,
   target: GmailParserTarget,
-  options: Required<Omit<ParserRunOptions, "providerKey">>,
+  options: Required<Omit<ParserRunOptions, "providerKey" | "includeCandidates">>,
 ): Promise<GmailParserTargetResult> {
   const parser = gmailParserRegistry.get(target.providerKey);
   const connection = shortConnectionRef(target.connectionId);
@@ -76,6 +85,7 @@ async function runTarget(
     connectionId: target.connectionId,
     accountEmailMasked: target.accountEmailMasked,
     cardNames: target.cards.map((c) => c.displayName),
+    trial: target.trial,
     query: "",
     listed: 0,
     hasMore: false,
@@ -85,7 +95,10 @@ async function runTarget(
     messages: [],
     current: [],
   };
-  if (!parser || parser.support.level !== "official") return { ...base, error: "provider_unsupported" };
+  if (!parser) return { ...base, error: "provider_unsupported" };
+  if (parser.support.level !== "official" && !(target.trial && parser.canTrial)) {
+    return { ...base, error: "provider_unsupported" };
+  }
 
   const query = parser.buildQuery(options.days);
   let tokenRefreshed = false;
@@ -116,7 +129,7 @@ async function runTarget(
       input = {
         from: full.headers["from"] ?? null,
         subject: full.headers["subject"] ?? null,
-        receivedAt: toIso(full.internalDate),
+        receivedAt: toReceivedAtIso(full.internalDate, full.headers["date"]),
         bodyText: body.status === "ok" ? body.text : null,
         bodyStatus: body.status,
       };
@@ -127,14 +140,15 @@ async function runTarget(
       errorCounts.set(category, (errorCounts.get(category) ?? 0) + 1);
       return null;
     }
-    const result = parser.parse(input, target.cards);
+    const result = parser.parse(input, target.cards, { trial: target.trial });
     return options.includeDebug ? result : { ...result, debug: [] };
   });
 
   const messages = parsed
     .filter((p): p is ParsedGmailBilling => p !== null)
     .sort((a, b) => b.sourceReceivedAt.localeCompare(a.sourceReceivedAt));
-  const current = [...selectCurrentBillingByCard(messages, options.now).values()];
+  // 試行（未対応）の結果は採用候補にしない
+  const current = target.trial ? [] : [...selectCurrentBillingByCard(messages, options.now).values()];
 
   const statusCounts: Record<string, number> = {};
   for (const r of messages) {
@@ -173,13 +187,17 @@ export async function runGmailParserPreview(
     now: options.now ?? new Date(),
   };
   const providerKey = options.providerKey || null;
+  const includeCandidates = options.includeCandidates ?? false;
 
   const [cards, assignments, connections] = await Promise.all([
     listAllCards(),
     listGmailAssignments(),
     listGmailConnections(),
   ]);
-  const { targets: allTargets, ...plan } = planParserTargets({ cards, assignments, connections });
+  const { targets: allTargets, ...plan } = planParserTargets(
+    { cards, assignments, connections },
+    { includeCandidates },
+  );
   const targets = providerKey ? allTargets.filter((t) => t.providerKey === providerKey) : allTargets;
 
   const results: GmailParserTargetResult[] = [];
@@ -193,6 +211,7 @@ export async function runGmailParserPreview(
     maxMessages: resolved.maxMessages,
     providerKey,
     includeDebug: resolved.includeDebug,
+    includeCandidates,
     plan,
     results,
   };
