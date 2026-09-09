@@ -86,6 +86,12 @@ export type GmailProviderRule = {
   dateExclude?: readonly RegExp[];
   /** 本文で支払日が見つからないとき、件名の日付も使う（引き落とし日の案内など）。 */
   dateFromSubject?: boolean;
+  /**
+   * この会社のメールには請求金額が載らないことが実メールで確認できている場合に false。
+   * 金額の抽出を一切行わず（本文中の別の円表記を誤って採用しないため）、
+   * 支払日だけを持つ結果（amount = null）として成功にする。
+   */
+  amountInMail?: boolean;
   /** 既定の検索期間（日）。 */
   lookbackDays?: number;
   /**

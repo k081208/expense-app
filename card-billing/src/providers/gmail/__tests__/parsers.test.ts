@@ -177,25 +177,30 @@ describe("jcb parser", () => {
   const CONFIRMED = "JCBカード2026年9月分お振替内容確定のご案内";
   const CHANGED = "JCBカード2026年9月分お振替内容変更のご案内";
 
-  it("確定: 2 枚のうち本文の下 4 桁で決める", () => {
-    const bodyText = `JCBカードのお振替内容が確定しました。
+  it("確定: 金額はメールに載らないので読み取らず、支払日と 2 枚のうちのカード（下 4 桁）だけを返す", () => {
+    const bodyText = `JCBカードのお振替内容が確定しました。金額は会員サイトでご確認ください。
 カード番号 ****-****-****-5678
 お振替日 2026年9月10日
-お振替金額 45,678円`;
+年会費 1,375円（税込）のご案内`;
     const r = jcbGmailParser.parse(input({ from: FROM, subject: CONFIRMED, bodyText }), [CARD_A, CARD_B]);
-    expect(r).toMatchObject({ status: "success", mailClass: "confirmed", cardId: "card-b", amount: 45678, paymentDate: "2026-09-10" });
+    expect(r).toMatchObject({ status: "success", mailClass: "confirmed", cardId: "card-b", amount: null, paymentDate: "2026-09-10" });
+    // 本文中の別の円表記（年会費など）を金額として採用しない
+    expect(r.debug.join("\n")).not.toContain("1,375");
+    expect(r.debug.join("\n")).toContain("金額は読み取らない");
   });
-  it("変更: 「変更前」の金額は除外し「変更後」を採用する。2 つ目の送信元も許可", () => {
+  it("変更: 同じく支払日とカードだけ。2 つ目の送信元も許可", () => {
     const bodyText = `お振替内容に変更がありました。
 カード番号 ****-****-****-1234
-変更前のお振替金額 45,678円
-変更後のお振替金額 40,000円
 お振替日 2026年9月10日`;
     const r = jcbGmailParser.parse(input({ from: FROM2, subject: CHANGED, bodyText, receivedAt: "2026-09-05T00:00:00.000Z" }), [CARD_A, CARD_B]);
-    expect(r).toMatchObject({ status: "success", mailClass: "changed", isProvisional: false, cardId: "card-a", amount: 40000, paymentDate: "2026-09-10" });
+    expect(r).toMatchObject({ status: "success", mailClass: "changed", isProvisional: false, cardId: "card-a", amount: null, paymentDate: "2026-09-10" });
+  });
+  it("支払日が無ければ失敗", () => {
+    const r = jcbGmailParser.parse(input({ from: FROM, subject: CONFIRMED, bodyText: "カード番号 ****-****-****-1234\nご確認ください" }), [CARD_A, CARD_B]);
+    expect(r).toMatchObject({ status: "error", errorCode: "payment_date_parse_failed" });
   });
   it("送信元がドメインだけ同じ別アドレスなら通らない", () => {
-    const r = jcbGmailParser.parse(input({ from: "<other@qa.jcb.co.jp>", subject: CONFIRMED, bodyText: "お振替金額 1円\nお振替日 2026年9月10日" }), [CARD_A]);
+    const r = jcbGmailParser.parse(input({ from: "<other@qa.jcb.co.jp>", subject: CONFIRMED, bodyText: "お振替日 2026年9月10日" }), [CARD_A]);
     expect(r.errorCode).toBe("sender_mismatch");
   });
 });

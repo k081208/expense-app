@@ -78,8 +78,8 @@ const MAILS: Record<string, ReturnType<typeof mail>> = {
   r2: mail("r2", RAKUTEN_FROM, "【楽天カード】カードご請求金額のご案内", "下4桁 5678\nご請求金額 6,789円\nお支払い日 2026年9月27日", "1757100000000"),
   r3: mail("r3", '"偽" <info@mail-rakuten-card.co.jp>', "【楽天カード】カードご請求金額のご案内", "下4桁 1234\nご請求金額 99,999円\nお支払い日 2026年9月27日", "1757200000000"),
   r4: mail("r4", RAKUTEN_FROM, "カード利用のお知らせ(本人ご利用分)", "ご利用金額 500円", "1757300000000"),
-  j1: mail("j1", "<mail@qa.jcb.co.jp>", "JCBカード2026年9月分お振替内容確定のご案内", "****-****-****-1111\nお振替金額 45,678円\nお振替日 2026年9月10日", "1757000000000"),
-  j2: mail("j2", "<mail@qa.jcb.co.jp>", "JCBカード2026年9月分お振替内容変更のご案内", "****-****-****-1111\n変更前のお振替金額 45,678円\n変更後のお振替金額 40,000円\nお振替日 2026年9月10日", "1757400000000"),
+  j1: mail("j1", "<mail@qa.jcb.co.jp>", "JCBカード2026年9月分お振替内容確定のご案内", "****-****-****-1111\nお振替日 2026年9月10日\n年会費 1,375円", "1757000000000"),
+  j2: mail("j2", "<mail@qa.jcb.co.jp>", "JCBカード2026年9月分お振替内容変更のご案内", "****-****-****-1111\nお振替日 2026年9月10日", "1757400000000"),
 };
 
 beforeEach(() => {
@@ -163,7 +163,9 @@ describe("runGmailParserPreview", () => {
     const report = await runGmailParserPreview(USER, { now: AS_OF });
     const jcb = report.results.find((r) => r.providerKey === "jcb")!;
     expect(jcb.current).toHaveLength(1);
-    expect(jcb.current[0]).toMatchObject({ cardId: "j-a", amount: 40000, mailClass: "changed", paymentDate: "2026-09-10" });
+    // JCB のメールには金額が載らないため amount は null（本文中の年会費を採用しない）
+    expect(jcb.current[0]).toMatchObject({ cardId: "j-a", amount: null, mailClass: "changed", paymentDate: "2026-09-10" });
+    expect(JSON.stringify(jcb)).not.toContain("1375");
     expect(jcb.tokenRefreshed).toBe(true);
     expect(jcb.hasMore).toBe(true);
     // 受信日時の新しい順

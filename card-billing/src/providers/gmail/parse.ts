@@ -113,8 +113,11 @@ export function parseWithRule(
     result.debug.push(match.detail);
   }
 
-  // 金額
-  const amount = extractAmount(text, rule.amountLabels, rule.amountExclude);
+  // 金額（メールに金額が載らない会社では抽出しない。別の円表記を誤って採用しないため）
+  const amount =
+    rule.amountInMail === false
+      ? { amount: null, status: "skipped" as const, candidates: [], notes: ["この会社のメールには請求金額が載らないため、金額は読み取らない（支払日のみ）"] }
+      : extractAmount(text, rule.amountLabels, rule.amountExclude);
   result.debug.push(...amount.notes);
   for (const c of amount.candidates) {
     result.debug.push(
@@ -139,7 +142,7 @@ export function parseWithRule(
   // 失敗したときは、本文の構造（数字をマスクした行）をヒントとして添える
   const hintKinds: StructureHintKind[] = [];
   if (match.status === "error") hintKinds.push("card");
-  if (amount.status !== "ok") hintKinds.push("amount");
+  if (amount.status !== "ok" && amount.status !== "skipped") hintKinds.push("amount");
   if (date.status !== "ok") hintKinds.push("date");
   if (hintKinds.length > 0) result.debug.push(...collectStructureHints(text, hintKinds));
 
