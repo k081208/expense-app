@@ -15,6 +15,11 @@ import type { GmailProviderRule } from "../types";
  *     金額を読み取ろうとすると本文中の別の円表記を誤って採用してしまったため、
  *     `amountInMail: false` にして金額の抽出そのものを止め、支払日だけを持つ結果にする。
  *     JCB の金額は Gmail からは得られない（STEP 9 の公式 API など別の取得元が必要）。
+ *   - 本文にはカード番号の下 4 桁が無く、「カード名称」の行でしかカードを区別できない。
+ *     下 4 桁が識別キーの現在の仕様では、JCB 2 枚は card_match_ambiguous になる
+ *     （カードごとに本文中の名称を登録する列は STEP 10 への提案）。
+ *   - 振替日は本文では「毎月10日」としか書かれず、件名の「YYYY年M月D日分」が具体的な日付。
+ *     そのため件名の日付を支払日として使う（dateFromSubject）。
  *
  * 「変更」は「確定」より後に届く。採用の判定（select.ts）では同じ支払日なら
  * 変更 > 確定、同じ種類なら受信日時が新しい方を使う。
@@ -33,6 +38,7 @@ export const jcbGmailRule: GmailProviderRule = {
   amountExclude: [],
   dateLabels: [/お振替(?:予定)?日/, /振替日/, /お支払い?日/, /お引き?落とし日/],
   dateExclude: [/変更前/, /締め?日/, /ご利用日/],
+  dateFromSubject: true,
 };
 
 export const jcbGmailParser = createGmailParser(jcbGmailRule);

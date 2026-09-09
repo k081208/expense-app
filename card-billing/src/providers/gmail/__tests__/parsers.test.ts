@@ -174,33 +174,39 @@ ${extra}`;
 describe("jcb parser", () => {
   const FROM = "MyJCB <mail@qa.jcb.co.jp>";
   const FROM2 = "<mail@cj.jcb.co.jp>";
-  const CONFIRMED = "JCBカード2026年9月分お振替内容確定のご案内";
-  const CHANGED = "JCBカード2026年9月分お振替内容変更のご案内";
+  const CONFIRMED = "JCBカード2026年9月10日分お振替内容確定のご案内";
+  const CHANGED = "JCBカード2026年9月10日分お振替内容変更のご案内";
+  // 架空の本文（実メールの形を抽象化: 下 4 桁なし・金額なし・振替日は「毎月10日」のみ）
+  const BODY = `カード名称 : サンプルカード X
+いつもサンプルカード X をご利用いただきありがとうございます。
+次回お振替分のご利用明細が確定しました。会員サイトでご確認ください。
+お振替日は毎月10日(金融機関休業日の場合は、翌営業日)です。
+年会費 1,375円(税込)のご案内`;
 
-  it("確定: 金額はメールに載らないので読み取らず、支払日と 2 枚のうちのカード（下 4 桁）だけを返す", () => {
-    const bodyText = `JCBカードのお振替内容が確定しました。金額は会員サイトでご確認ください。
-カード番号 ****-****-****-5678
-お振替日 2026年9月10日
-年会費 1,375円（税込）のご案内`;
-    const r = jcbGmailParser.parse(input({ from: FROM, subject: CONFIRMED, bodyText }), [CARD_A, CARD_B]);
-    expect(r).toMatchObject({ status: "success", mailClass: "confirmed", cardId: "card-b", amount: null, paymentDate: "2026-09-10" });
-    // 本文中の別の円表記（年会費など）を金額として採用しない
+  it("確定: 金額は読み取らず、支払日は件名の「YYYY年M月D日分」から取る（本文の「毎月10日」は日付にしない）", () => {
+    const r = jcbGmailParser.parse(input({ from: FROM, subject: CONFIRMED, bodyText: BODY }), [SINGLE]);
+    expect(r).toMatchObject({ status: "success", mailClass: "confirmed", cardId: "card-s", amount: null, paymentDate: "2026-09-10" });
     expect(r.debug.join("\n")).not.toContain("1,375");
-    expect(r.debug.join("\n")).toContain("金額は読み取らない");
+    expect(r.debug.join("\n")).toContain("支払日は件名から取得");
   });
-  it("変更: 同じく支払日とカードだけ。2 つ目の送信元も許可", () => {
-    const bodyText = `お振替内容に変更がありました。
-カード番号 ****-****-****-1234
-お振替日 2026年9月10日`;
-    const r = jcbGmailParser.parse(input({ from: FROM2, subject: CHANGED, bodyText, receivedAt: "2026-09-05T00:00:00.000Z" }), [CARD_A, CARD_B]);
-    expect(r).toMatchObject({ status: "success", mailClass: "changed", isProvisional: false, cardId: "card-a", amount: null, paymentDate: "2026-09-10" });
+  it("変更: 同じく支払日のみ。2 つ目の送信元も許可", () => {
+    const r = jcbGmailParser.parse(input({ from: FROM2, subject: CHANGED, bodyText: BODY, receivedAt: "2026-09-05T00:00:00.000Z" }), [SINGLE]);
+    expect(r).toMatchObject({ status: "success", mailClass: "changed", isProvisional: false, amount: null, paymentDate: "2026-09-10" });
   });
-  it("支払日が無ければ失敗", () => {
-    const r = jcbGmailParser.parse(input({ from: FROM, subject: CONFIRMED, bodyText: "カード番号 ****-****-****-1234\nご確認ください" }), [CARD_A, CARD_B]);
+  it("2 枚あるとき、本文に下 4 桁が無いので card_match_ambiguous（カード名称では決めない）。支払日は読める", () => {
+    const r = jcbGmailParser.parse(input({ from: FROM, subject: CONFIRMED, bodyText: BODY }), [CARD_A, CARD_B]);
+    expect(r).toMatchObject({ status: "error", errorCode: "card_match_ambiguous", cardId: null, paymentDate: "2026-09-10" });
+  });
+  it("本文に下 4 桁があればそれで決める", () => {
+    const r = jcbGmailParser.parse(input({ from: FROM, subject: CONFIRMED, bodyText: `${BODY}\nカード番号 ****-****-****-5678` }), [CARD_A, CARD_B]);
+    expect(r).toMatchObject({ status: "success", cardId: "card-b", matchedBy: "last_four" });
+  });
+  it("件名にも本文にも日付が無ければ失敗", () => {
+    const r = jcbGmailParser.parse(input({ from: FROM, subject: "JCBカードお振替内容確定のご案内", bodyText: "ご確認ください" }), [SINGLE]);
     expect(r).toMatchObject({ status: "error", errorCode: "payment_date_parse_failed" });
   });
   it("送信元がドメインだけ同じ別アドレスなら通らない", () => {
-    const r = jcbGmailParser.parse(input({ from: "<other@qa.jcb.co.jp>", subject: CONFIRMED, bodyText: "お振替日 2026年9月10日" }), [CARD_A]);
+    const r = jcbGmailParser.parse(input({ from: "<other@qa.jcb.co.jp>", subject: CONFIRMED, bodyText: BODY }), [SINGLE]);
     expect(r.errorCode).toBe("sender_mismatch");
   });
 });
